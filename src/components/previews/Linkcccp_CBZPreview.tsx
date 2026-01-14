@@ -255,16 +255,16 @@ const Linkcccp_CBZPreview: React.FC<{
                     : 'h-96 md:h-[32rem] lg:h-[40rem] bg-white dark:bg-gray-900'
                     }`}
             >
-                <div className="flex flex-col items-center space-y-2 p-4">
+                <div className="flex flex-col items-center space-y-0">
                     {images.map((image, index) => (
                         <div
                             key={image.name}
-                            className="w-full max-w-4xl flex flex-col items-center"
+                            className="w-full flex flex-col items-center relative"
                         >
                             <img
                                 src={image.url}
                                 alt={`Page ${index + 1}`}
-                                className="max-w-full h-auto shadow-lg rounded"
+                                className="max-w-full h-auto"
                                 loading={index < 3 ? 'eager' : 'lazy'}
                                 onError={(e) => {
                                     console.error(`Failed to load image: ${image.name}`)
@@ -272,7 +272,7 @@ const Linkcccp_CBZPreview: React.FC<{
                                     target.style.display = 'none'
                                 }}
                             />
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            <p className="absolute top-2 right-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 bg-opacity-70 px-2 py-1 rounded">
                                 {index + 1} / {images.length}
                             </p>
                         </div>
