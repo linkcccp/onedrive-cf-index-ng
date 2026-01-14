@@ -1,0 +1,396 @@
+import { posix as pathPosix } from 'path-browserify'
+import axios from 'redaxios'
+import apiConfig from '../../../config/api.config'
+import siteConfig from '../../../config/site.config'
+import { getAccessToken, encodePath } from './index'
+import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'edge'
+
+/**
+ * 树形结构节点类型
+ */
+interface IndexNode {
+    name: string
+    path: string
+    isFolder: boolean
+    children?: IndexNode[]
+}
+
+/**
+ * 递归获取所有文件和文件夹
+ * 支持分页处理、特殊字符转义、完整的错误处理
+ * 
+ * @param accessToken OneDrive API access token
+ * @param currentPath 当前相对于 baseDirectory 的路径
+ * @param oneDrivePath OneDrive API 中的编码路径
+ * @returns 树形结构数组
+ */
+async function fetchAllItems(
+    accessToken: string,
+    currentPath: string,
+    oneDrivePath: string
+): Promise<IndexNode[]> {
+    const items: IndexNode[] = []
+
+    try {
+        // 获取当前文件夹的所有子项
+        const requestUrl = `${apiConfig.driveApi}/root${oneDrivePath ? `:${oneDrivePath}` : ''}:/children`
+
+        let nextLink: string | null = requestUrl
+        const maxRetries = 3
+        let retryCount = 0
+
+        // 处理分页：必须循环检查 @odata.nextLink，直到获取当前目录下的所有文件
+        while (nextLink) {
+            try {
+                let requestConfig: any = {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                }
+
+                // 第一次请求需要添加参数，后续请求使用 nextLink URL 已包含的参数
+                if (nextLink === requestUrl) {
+                    requestConfig.params = {
+                        select: 'name,id,folder,file',
+                        $top: 200,
+                    }
+                }
+
+                const response = await axios.get(nextLink, requestConfig)
+                const folderData = response.data
+
+                // 验证响应数据结构
+                if (!folderData.value || !Array.isArray(folderData.value)) {
+                    console.warn(`Warning: Empty or malformed folder data at ${currentPath}`)
+                    break
+                }
+
+                // 处理每个子项
+                for (const item of folderData.value) {
+                    try {
+                        // 使用 item.name 作为文件名（OneDrive API 已处理转义）
+                        const itemPath = pathPosix.join(currentPath, item.name)
+
+                        const node: IndexNode = {
+                            name: item.name,
+                            path: itemPath,
+                            isFolder: 'folder' in item,
+                        }
+
+                        // 如果是文件夹，递归获取子项
+                        if ('folder' in item) {
+                            node.children = await fetchAllItems(accessToken, itemPath, itemPath)
+                        }
+
+                        items.push(node)
+                    } catch (itemError) {
+                        console.error(`Error processing item ${item.name}:`, itemError)
+                        // 继续处理其他项
+                        continue
+                    }
+                }
+
+                // 检查是否有下一页 - 这是关键的分页处理
+                if (folderData['@odata.nextLink']) {
+                    nextLink = folderData['@odata.nextLink']
+                    retryCount = 0 // 重置重试计数
+                } else {
+                    nextLink = null // 没有下一页，退出循环
+                }
+            } catch (pageError: any) {
+                // 处理分页请求的错误
+                if (pageError?.response?.status === 429 || pageError?.response?.status === 503) {
+                    // 速率限制或服务不可用，重试
+                    if (retryCount < maxRetries) {
+                        retryCount++
+                        console.warn(`Rate limited or unavailable, retrying (${retryCount}/${maxRetries})...`)
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)) // 指数退避
+                        continue
+                    }
+                }
+                throw pageError
+            }
+        }
+
+        // 按名称排序（文件夹优先）
+        items.sort((a, b) => {
+            if (a.isFolder !== b.isFolder) {
+                return a.isFolder ? -1 : 1
+            }
+            return a.name.localeCompare(b.name, 'zh-CN', { numeric: true })
+        })
+
+        return items
+    } catch (error: any) {
+        console.error(`Error fetching items from ${currentPath}:`, error?.message ?? error)
+        return []
+    }
+}
+
+/**
+ * 对文件名进行 Markdown 安全转义
+ * 防止特殊符号（如 #, %, &, *, [, ], (, ), !, |）破坏 Markdown 语法
+ * 
+ * @param filename 原始文件名
+ * @returns 转义后的文件名
+ */
+function escapeMarkdownSpecialChars(filename: string): string {
+    // 转义 Markdown 特殊字符
+    return filename
+        .replace(/\\/g, '\\\\') // 反斜杠
+        .replace(/\*/g, '\\*')   // 星号（粗体/斜体）
+        .replace(/\[/g, '\\[')   // 左方括号（链接）
+        .replace(/\]/g, '\\]')   // 右方括号（链接）
+        .replace(/\(/g, '\\(')   // 左圆括号（链接）
+        .replace(/\)/g, '\\)')   // 右圆括号（链接）
+        .replace(/!/g, '\\!')    // 感叹号（图片）
+        .replace(/#/g, '\\#')    // 井号（标题）
+        .replace(/\|/g, '\\|')   // 管道符（表格）
+        .replace(/`/g, '\\`')    // 反引号（代码）
+        .replace(/~/g, '\\~')    // 波浪号（删除线）
+}
+
+/**
+ * 对 URL 路径进行完整编码
+ * 处理中文路径和特殊符号，确保浏览器可以正确解析
+ * 
+ * @param path 文件相对路径
+ * @returns 可用于 URL 的编码路径
+ */
+function encodeUrlPath(path: string): string {
+    // 使用 encodeURIComponent 编码整个路径，然后保留 / 分隔符
+    return path
+        .split('/')
+        .map(segment => encodeURIComponent(segment))
+        .join('/')
+}
+
+/**
+ * 将树形结构转换为 Markdown 格式
+ * 处理特殊符号、确保链接正确编码
+ * 
+ * @param items 树形结构数组
+ * @param depth 当前深度（用于缩进）
+ * @returns Markdown 字符串
+ */
+function convertToMarkdown(items: IndexNode[], depth: number = 0): string {
+    const indent = '  '.repeat(depth)
+    let markdown = ''
+
+    for (const item of items) {
+        try {
+            // 编码处理：文件名路径必须经过 encodeURIComponent 处理
+            const encodedPath = encodeUrlPath(item.path)
+
+            // Markdown 安全转义：特殊符号不会导致语法崩溃
+            const escapedName = escapeMarkdownSpecialChars(item.name)
+
+            const icon = item.isFolder ? '📁' : '📄'
+
+            if (item.isFolder) {
+                // 文件夹用粗体加链接
+                markdown += `${indent}- ${icon} **[${escapedName}](/${encodedPath})**\n`
+                if (item.children && item.children.length > 0) {
+                    markdown += convertToMarkdown(item.children, depth + 1)
+                }
+            } else {
+                // 文件用普通链接
+                markdown += `${indent}- ${icon} [${escapedName}](/${encodedPath})\n`
+            }
+        } catch (error) {
+            console.error(`Error converting item to markdown: ${item.name}`, error)
+            // 降级处理：直接显示文件名而不是链接
+            const icon = item.isFolder ? '📁' : '📄'
+            const escapedName = escapeMarkdownSpecialChars(item.name)
+            markdown += `${indent}- ${icon} ${escapedName}\n`
+            continue
+        }
+    }
+
+    return markdown
+}
+
+/**
+ * 递归统计树中的节点总数
+ */
+function countItems(items: IndexNode[]): number {
+    let count = items.length
+    for (const item of items) {
+        if (item.children && item.children.length > 0) {
+            count += countItems(item.children)
+        }
+    }
+    return count
+}
+
+/**
+ * 生成完整的 index.md 内容
+ * @param items 树形结构数组
+ * @param generatedTime 生成时间
+ * @returns 完整的 Markdown 内容
+ */
+function generateIndexContent(items: IndexNode[], generatedTime: string): string {
+    const baseDir = siteConfig.baseDirectory || '/'
+    const totalItems = countItems(items)
+
+    // 转义 baseDir 中的特殊字符以防万一
+    const escapedBaseDir = escapeMarkdownSpecialChars(baseDir)
+
+    const title = `# 📚 OneDrive 文件索引`
+    const subtitle = `**基目录**: \`${escapedBaseDir}\` | **总文件数**: ${totalItems}`
+    const timestamp = `**生成时间**: ${generatedTime}`
+    const note =
+        '> 💡 **使用 Ctrl + F 搜索** 来快速查找文件（支持中文搜索，克服 OneDrive 原生搜索的不足）\n\n> ⚠️ 本索引为静态快照，如有新增/删除文件，请点击导航栏"Index"按钮重新生成。'
+    const separator = '\n---\n\n'
+
+    const content = convertToMarkdown(items)
+
+    return `${title}\n\n${subtitle}\n\n${timestamp}\n\n${note}${separator}${content}`
+}
+
+/**
+ * 将 index.md 上传到 OneDrive 根目录
+ * 支持重试和完整的错误处理
+ * 
+ * @param accessToken OneDrive API access token
+ * @param content 文件内容
+ */
+async function uploadIndexFile(accessToken: string, content: string): Promise<void> {
+    const indexFileName = 'index.md'
+    const uploadUrl = `${apiConfig.driveApi}/root/${indexFileName}:/content`
+    const maxRetries = 3
+    let lastError: any
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            await axios.put(uploadUrl, content, {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'text/markdown; charset=utf-8',
+                },
+            })
+            console.log(`✅ Successfully uploaded index.md to OneDrive root (attempt ${attempt})`)
+            return
+        } catch (error: any) {
+            lastError = error
+            const status = error?.response?.status
+            const errorMsg = error?.response?.data?.error?.message ?? error?.message
+
+            if (status === 429 || status === 503) {
+                // 速率限制或服务不可用，重试
+                if (attempt < maxRetries) {
+                    const waitTime = 1000 * attempt // 指数退避
+                    console.warn(
+                        `⚠️ Upload failed (attempt ${attempt}/${maxRetries}): ${status} ${errorMsg}, retrying in ${waitTime}ms...`
+                    )
+                    await new Promise(resolve => setTimeout(resolve, waitTime))
+                    continue
+                }
+            } else if (status === 401 || status === 403) {
+                // 认证失败，不应重试
+                throw new Error(`Authentication failed: ${errorMsg}`)
+            }
+
+            // 其他错误，尝试重试
+            if (attempt < maxRetries) {
+                console.warn(`⚠️ Upload failed (attempt ${attempt}/${maxRetries}): ${errorMsg}, retrying...`)
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+                continue
+            }
+        }
+    }
+
+    // 所有重试都失败
+    console.error(`❌ Failed to upload index.md after ${maxRetries} attempts:`, lastError)
+    throw new Error(
+        `Failed to upload index.md to OneDrive: ${lastError?.response?.data?.error?.message ?? lastError?.message}`
+    )
+}
+
+/**
+ * 主处理函数
+ */
+export default async function handler(req: NextRequest): Promise<Response> {
+    // 只允许 GET 请求
+    if (req.method !== 'GET') {
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 })
+    }
+
+    const startTime = Date.now()
+
+    try {
+        console.log('🚀 Starting index generation...')
+
+        // 获取 access token
+        const accessToken = await getAccessToken()
+
+        if (!accessToken) {
+            return new Response(JSON.stringify({ error: 'No access token available' }), { status: 403 })
+        }
+
+        // 获取基目录的编码路径
+        const basePath = pathPosix.resolve('/', siteConfig.baseDirectory || '/')
+        console.log(`📂 Base directory: ${basePath}`)
+
+        // 递归获取所有文件和文件夹
+        console.log('⏳ Fetching all items from OneDrive...')
+        const allItems = await fetchAllItems(accessToken, '', basePath === '/' ? '' : basePath)
+
+        const totalItems = countItems(allItems)
+        const topLevelItems = allItems.length
+
+        console.log(`✅ Fetched ${topLevelItems} top-level items, ${totalItems} total items recursively`)
+
+        // 验证是否获取到任何项
+        if (totalItems === 0) {
+            console.warn('⚠️ Warning: No items found in the specified directory')
+        }
+
+        // 生成 Markdown 内容
+        const generatedTime = new Date().toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        })
+
+        console.log('📝 Generating Markdown content...')
+        const indexContent = generateIndexContent(allItems, generatedTime)
+        const contentSize = new Blob([indexContent]).size
+        console.log(`📄 Generated index.md (${contentSize} bytes)`)
+
+        // 上传到 OneDrive
+        console.log('📤 Uploading index.md to OneDrive...')
+        await uploadIndexFile(accessToken, indexContent)
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+        console.log(`✨ Index generation completed in ${duration}s`)
+
+        return NextResponse.json({
+            success: true,
+            message: 'Index generated and uploaded successfully',
+            itemsCount: totalItems,
+            topLevelItems,
+            contentSize,
+            generatedTime,
+            duration: `${duration}s`,
+        })
+    } catch (error: any) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+        console.error(
+            `❌ Error in generateIndex (${duration}s):`,
+            error?.message ?? error
+        )
+
+        return new Response(
+            JSON.stringify({
+                error: error?.message ?? 'Internal server error',
+                details: error?.response?.data ?? undefined,
+                duration: `${duration}s`,
+            }),
+            { status: error?.response?.status ?? 500 }
+        )
+    }
+}

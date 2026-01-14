@@ -19,6 +19,7 @@ const Navbar = () => {
 
   const [tokenPresent, setTokenPresent] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const [isGeneratingIndex, setIsGeneratingIndex] = useState(false)
 
   const [searchOpen, setSearchOpen] = useState(false)
   const openSearchBox = () => setSearchOpen(true)
@@ -51,6 +52,25 @@ const Navbar = () => {
     setTimeout(() => {
       router.reload()
     }, 1000)
+  }
+
+  const generateIndex = async () => {
+    setIsGeneratingIndex(true)
+    try {
+      const response = await fetch('/api/Linkcccp_generateIndex')
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success('Index generated successfully! 📚')
+      } else {
+        toast.error(`Failed to generate index: ${data.error}`)
+      }
+    } catch (error) {
+      toast.error('Error generating index')
+      console.error('Error:', error)
+    } finally {
+      setIsGeneratingIndex(false)
+    }
   }
 
   return (
@@ -113,7 +133,17 @@ const Navbar = () => {
               <FontAwesomeIcon icon="sign-out-alt" />
             </button>
           )}
-        </div>
+          <button
+            className="flex items-center space-x-2 hover:opacity-80 dark:text-white disabled:opacity-50"
+            onClick={generateIndex}
+            disabled={isGeneratingIndex}
+            title="Generate OneDrive file index"
+          >
+            <span className="hidden text-sm font-medium md:inline-block">
+              {isGeneratingIndex ? 'Generating...' : 'Index'}
+            </span>
+            <FontAwesomeIcon icon={isGeneratingIndex ? 'spinner' : 'file-alt'} spin={isGeneratingIndex} />
+          </button>        </div>
       </div>
 
       <Transition appear show={isOpen} as={Fragment}>
