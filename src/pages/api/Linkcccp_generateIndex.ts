@@ -117,14 +117,21 @@ async function fetchAllItems(
             if (a.isFolder !== b.isFolder) {
                 return a.isFolder ? -1 : 1
             }
-            return a.name.localeCompare(b.name, 'zh-CN', { numeric: true })
+            // 使用基础的 localeCompare 而不指定区域设置，确保 Edge Runtime 兼容
+            try {
+                return a.name.localeCompare(b.name, undefined, { numeric: true })
+            } catch {
+                // 如果 localeCompare 失败，使用简单的字符串比较
+                return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+            }
         })
+    })
 
-        return items
-    } catch (error: any) {
-        console.error(`Error fetching items from ${currentPath}:`, error?.message ?? error)
-        return []
-    }
+    return items
+} catch (error: any) {
+    console.error(`Error fetching items from ${currentPath}:`, error?.message ?? error)
+    return []
+}
 }
 
 /**
@@ -260,9 +267,13 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
     const uploadUrl = `${apiConfig.driveApi}/root/${indexFileName}:/content`
     const maxRetries = 3
     let lastError: any
+    let lastResponse: any
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
+            console.log(`[Upload Attempt ${attempt}/${maxRetries}] Uploading index.md to: ${uploadUrl}`)
+            console.log(`[Upload Attempt ${attempt}/${maxRetries}] Content size: ${new TextEncoder().encode(content).length} bytes`)
+
             await axios.put(uploadUrl, content, {
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
@@ -273,53 +284,82 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
             return
         } catch (error: any) {
             lastError = error
-            const status = error?.response?.status
-            const errorMsg = error?.response?.data?.error?.message ?? error?.message ?? 'Unknown error'
+            lastResponse = error?.response
 
-            console.error(`Error details (attempt ${attempt}):`, {
+            const status = error?.response?.status
+            const statusText = error?.response?.statusText
+            const errorData = error?.response?.data
+
+            // 详细的错误信息提取
+            const errorMsg =
+                errorData?.error?.message ||
+                errorData?.message ||
+                errorData?.['odata.error']?.message ||
+                statusText ||
+                error?.message ||
+                'Unknown error'
+
+            console.error(`❌ Upload failed (attempt ${attempt}/${maxRetries}):`, {
                 status,
-                message: errorMsg,
-                data: error?.response?.data,
-                errorObj: error?.toString(),
+                statusText,
+                errorMessage: errorMsg,
+                fullErrorData: JSON.stringify(errorData, null, 2),
+                errorStack: error?.stack,
             })
 
             if (status === 429 || status === 503) {
                 // 速率限制或服务不可用，重试
                 if (attempt < maxRetries) {
-                    const waitTime = 1000 * attempt // 指数退避
+                    const waitTime = 1000 * Math.pow(2, attempt - 1) // 指数退避: 1s, 2s, 4s
                     console.warn(
-                        `⚠️ Upload failed (attempt ${attempt}/${maxRetries}): ${status} ${errorMsg}, retrying in ${waitTime}ms...`
+                        `⚠️ ${status} - Retrying in ${waitTime}ms...`
                     )
                     await new Promise(resolve => setTimeout(resolve, waitTime))
                     continue
                 }
             } else if (status === 401 || status === 403) {
                 // 认证失败，不应重试
-                throw new Error(`Authentication failed: ${errorMsg}`)
+                throw new Error(`Authentication failed (${status}): ${errorMsg}`)
             }
 
             // 其他错误，尝试重试
             if (attempt < maxRetries) {
-                console.warn(`⚠️ Upload failed (attempt ${attempt}/${maxRetries}): ${errorMsg}, retrying...`)
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+                const waitTime = 1000 * Math.pow(2, attempt - 1)
+                console.warn(`⚠️ Retrying in ${waitTime}ms...`)
+                await new Promise(resolve => setTimeout(resolve, waitTime))
                 continue
             }
         }
     }
 
-    // 所有重试都失败
-    console.error(`❌ Failed to upload index.md after ${maxRetries} attempts:`, lastError)
+    // 所有重试都失败，生成详细错误消息
+    console.error(`❌ Failed to upload index.md after ${maxRetries} attempts`)
+    console.error('Last error details:', {
+        response: lastResponse ? {
+            status: lastResponse.status,
+            statusText: lastResponse.statusText,
+            headers: lastResponse.headers,
+            data: lastResponse.data,
+        } : null,
+        message: lastError?.message,
+        code: lastError?.code,
+        stack: lastError?.stack,
+    })
 
-    // 更好的错误消息提取
+    // 构建详细的错误消息
     let errorMessage = 'Unknown error'
-    if (lastError?.response?.data?.error?.message) {
-        errorMessage = lastError.response.data.error.message
-    } else if (lastError?.response?.statusText) {
-        errorMessage = `${lastError.response.status} ${lastError.response.statusText}`
+    if (lastResponse?.data?.error?.message) {
+        errorMessage = lastResponse.data.error.message
+    } else if (lastResponse?.data?.['odata.error']?.message) {
+        errorMessage = lastResponse.data['odata.error'].message
+    } else if (lastResponse?.data?.message) {
+        errorMessage = lastResponse.data.message
+    } else if (lastResponse?.statusText) {
+        errorMessage = `${lastResponse.status} ${lastResponse.statusText}`
     } else if (lastError?.message) {
         errorMessage = lastError.message
-    } else if (typeof lastError === 'string') {
-        errorMessage = lastError
+    } else if (lastError?.code) {
+        errorMessage = `Error code: ${lastError.code}`
     }
 
     throw new Error(`Failed to upload index.md to OneDrive: ${errorMessage}`)
@@ -378,8 +418,9 @@ export default async function handler(req: NextRequest): Promise<Response> {
         console.log('📝 Generating Markdown content...')
         const indexContent = generateIndexContent(allItems, generatedTime)
 
-        // 计算内容大小（使用 Buffer.byteLength 而不是 Blob，确保 Edge Runtime 兼容）
-        const contentSize = Buffer.byteLength(indexContent, 'utf-8')
+        // 计算内容大小（使用 TextEncoder 而不是 Buffer，确保 Edge Runtime 兼容）
+        const encoder = new TextEncoder()
+        const contentSize = encoder.encode(indexContent).length
         console.log(`📄 Generated index.md (${contentSize} bytes)`)
 
         // 上传到 OneDrive
@@ -400,26 +441,53 @@ export default async function handler(req: NextRequest): Promise<Response> {
         })
     } catch (error: any) {
         const duration = ((Date.now() - startTime) / 1000).toFixed(2)
-        console.error(
-            `❌ Error in generateIndex (${duration}s):`,
-            error?.message ?? error
-        )
+
+        // 详细的错误日志
+        console.error(`❌ Error in generateIndex (${duration}s):`)
+        console.error('Error message:', error?.message)
+        console.error('Error toString:', error?.toString())
+        console.error('Error type:', typeof error)
+        console.error('Error keys:', error ? Object.keys(error) : 'null')
+        console.error('Full error:', JSON.stringify(error, null, 2))
+        console.error('Error stack:', error?.stack)
 
         // 更好的错误信息构建
-        let errorMessage = error?.message ?? 'Internal server error'
-        let errorDetails: any = undefined
+        let errorMessage = 'Internal server error'
+        let errorDetails: any = {}
+        let statusCode = 500
 
+        // 优先级顺序提取错误信息
+        if (error?.message) {
+            errorMessage = error.message
+        } else if (typeof error === 'string') {
+            errorMessage = error
+        }
+
+        // 提取 API 响应的错误详情
         if (error?.response?.data) {
-            errorDetails = error.response.data
+            errorDetails.apiError = error.response.data
+            if (error.response.status) {
+                statusCode = error.response.status
+            }
+        } else if (error?.response?.status) {
+            statusCode = error.response.status
+        }
+
+        // 如果有堆栈跟踪，也包含在响应中以供调试
+        if (process.env.NODE_ENV === 'development') {
+            errorDetails.stack = error?.stack
         }
 
         return new Response(
             JSON.stringify({
                 error: errorMessage,
-                details: errorDetails,
+                ...(!Object.keys(errorDetails).length ? {} : { details: errorDetails }),
                 duration: `${duration}s`,
             }),
-            { status: error?.response?.status ?? 500 }
+            {
+                status: statusCode,
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            }
         )
     }
 }
