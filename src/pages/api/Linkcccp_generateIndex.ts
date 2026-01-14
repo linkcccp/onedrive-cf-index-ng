@@ -309,7 +309,7 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
 
     // 所有重试都失败
     console.error(`❌ Failed to upload index.md after ${maxRetries} attempts:`, lastError)
-    
+
     // 更好的错误消息提取
     let errorMessage = 'Unknown error'
     if (lastError?.response?.data?.error?.message) {
@@ -321,7 +321,7 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
     } else if (typeof lastError === 'string') {
         errorMessage = lastError
     }
-    
+
     throw new Error(`Failed to upload index.md to OneDrive: ${errorMessage}`)
 }
 
@@ -365,18 +365,21 @@ export default async function handler(req: NextRequest): Promise<Response> {
         }
 
         // 生成 Markdown 内容
-        const generatedTime = new Date().toLocaleString('zh-CN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-        })
+        const now = new Date()
+        // 使用更兼容的时间格式化方式（避免 toLocaleString 在 Edge Runtime 的问题）
+        const year = now.getFullYear()
+        const month = String(now.getMonth() + 1).padStart(2, '0')
+        const day = String(now.getDate()).padStart(2, '0')
+        const hours = String(now.getHours()).padStart(2, '0')
+        const minutes = String(now.getMinutes()).padStart(2, '0')
+        const seconds = String(now.getSeconds()).padStart(2, '0')
+        const generatedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 
         console.log('📝 Generating Markdown content...')
         const indexContent = generateIndexContent(allItems, generatedTime)
-        const contentSize = new Blob([indexContent]).size
+        
+        // 计算内容大小（使用 Buffer.byteLength 而不是 Blob，确保 Edge Runtime 兼容）
+        const contentSize = Buffer.byteLength(indexContent, 'utf-8')
         console.log(`📄 Generated index.md (${contentSize} bytes)`)
 
         // 上传到 OneDrive
@@ -405,7 +408,7 @@ export default async function handler(req: NextRequest): Promise<Response> {
         // 更好的错误信息构建
         let errorMessage = error?.message ?? 'Internal server error'
         let errorDetails: any = undefined
-        
+
         if (error?.response?.data) {
             errorDetails = error.response.data
         }
