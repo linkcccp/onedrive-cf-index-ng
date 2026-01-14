@@ -377,7 +377,7 @@ export default async function handler(req: NextRequest): Promise<Response> {
 
         console.log('📝 Generating Markdown content...')
         const indexContent = generateIndexContent(allItems, generatedTime)
-        
+
         // 计算内容大小（使用 Buffer.byteLength 而不是 Blob，确保 Edge Runtime 兼容）
         const contentSize = Buffer.byteLength(indexContent, 'utf-8')
         console.log(`📄 Generated index.md (${contentSize} bytes)`)
