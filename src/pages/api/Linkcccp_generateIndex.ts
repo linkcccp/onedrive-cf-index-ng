@@ -274,7 +274,14 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
         } catch (error: any) {
             lastError = error
             const status = error?.response?.status
-            const errorMsg = error?.response?.data?.error?.message ?? error?.message
+            const errorMsg = error?.response?.data?.error?.message ?? error?.message ?? 'Unknown error'
+
+            console.error(`Error details (attempt ${attempt}):`, {
+                status,
+                message: errorMsg,
+                data: error?.response?.data,
+                errorObj: error?.toString(),
+            })
 
             if (status === 429 || status === 503) {
                 // 速率限制或服务不可用，重试
@@ -302,9 +309,20 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
 
     // 所有重试都失败
     console.error(`❌ Failed to upload index.md after ${maxRetries} attempts:`, lastError)
-    throw new Error(
-        `Failed to upload index.md to OneDrive: ${lastError?.response?.data?.error?.message ?? lastError?.message}`
-    )
+    
+    // 更好的错误消息提取
+    let errorMessage = 'Unknown error'
+    if (lastError?.response?.data?.error?.message) {
+        errorMessage = lastError.response.data.error.message
+    } else if (lastError?.response?.statusText) {
+        errorMessage = `${lastError.response.status} ${lastError.response.statusText}`
+    } else if (lastError?.message) {
+        errorMessage = lastError.message
+    } else if (typeof lastError === 'string') {
+        errorMessage = lastError
+    }
+    
+    throw new Error(`Failed to upload index.md to OneDrive: ${errorMessage}`)
 }
 
 /**
@@ -384,10 +402,18 @@ export default async function handler(req: NextRequest): Promise<Response> {
             error?.message ?? error
         )
 
+        // 更好的错误信息构建
+        let errorMessage = error?.message ?? 'Internal server error'
+        let errorDetails: any = undefined
+        
+        if (error?.response?.data) {
+            errorDetails = error.response.data
+        }
+
         return new Response(
             JSON.stringify({
-                error: error?.message ?? 'Internal server error',
-                details: error?.response?.data ?? undefined,
+                error: errorMessage,
+                details: errorDetails,
                 duration: `${duration}s`,
             }),
             { status: error?.response?.status ?? 500 }
