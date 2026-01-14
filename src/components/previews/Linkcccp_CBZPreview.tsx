@@ -19,6 +19,9 @@ const Linkcccp_CBZPreview: React.FC<{
     const [isFullscreen, setIsFullscreen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const [progress, setProgress] = useState({ current: 0, total: 0 })
+    const [showProgressBar, setShowProgressBar] = useState(false)
+    const progressBarTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const isDraggingRef = useRef(false)
 
     // 自然排序函数
     const naturalSort = (a: string, b: string): number => {
@@ -69,6 +72,50 @@ const Linkcccp_CBZPreview: React.FC<{
         }
     }
 
+    // 自动隐藏进度条
+    const autoHideProgressBar = () => {
+        if (progressBarTimeoutRef.current) {
+            clearTimeout(progressBarTimeoutRef.current)
+        }
+        progressBarTimeoutRef.current = setTimeout(() => {
+            if (!isDraggingRef.current) {
+                setShowProgressBar(false)
+            }
+        }, 3000)
+    }
+
+    // 处理全屏区域点击显示进度条
+    const handleFullscreenContainerClick = () => {
+        if (isFullscreen) {
+            setShowProgressBar(!showProgressBar)
+            autoHideProgressBar()
+        }
+    }
+
+    // 处理进度条拖动
+    const handleProgressBarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newIndex = parseInt(e.target.value, 10)
+        if (containerRef.current && images.length > 0) {
+            // 计算滚动位置（每张图片的高度大约为容器的某个比例）
+            const scrollTop = (newIndex / images.length) * containerRef.current.scrollHeight
+            containerRef.current.scrollTo({
+                top: scrollTop,
+                behavior: 'smooth'
+            })
+        }
+    }
+
+    // 进度条拖动开始
+    const handleProgressBarMouseDown = () => {
+        isDraggingRef.current = true
+    }
+
+    // 进度条拖动结束
+    const handleProgressBarMouseUp = () => {
+        isDraggingRef.current = false
+        autoHideProgressBar()
+    }
+
     // 监听全屏状态变化
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -93,6 +140,13 @@ const Linkcccp_CBZPreview: React.FC<{
             saveTimeout = setTimeout(() => {
                 saveProgress(container.scrollTop)
             }, 500)
+
+            // 计算当前页码
+            if (isFullscreen && images.length > 0) {
+                const scrollPercentage = container.scrollTop / (container.scrollHeight - container.clientHeight)
+                const currentPageIndex = Math.round(scrollPercentage * (images.length - 1))
+                // 这里可以用来更新进度条显示，但进度条已经通过 scrollTop 计算
+            }
         }
 
         container.addEventListener('scroll', handleScroll)
@@ -101,7 +155,7 @@ const Linkcccp_CBZPreview: React.FC<{
             container.removeEventListener('scroll', handleScroll)
             clearTimeout(saveTimeout)
         }
-    }, [images])
+    }, [images, isFullscreen])
 
     // 恢复阅读进度
     useEffect(() => {
@@ -251,9 +305,10 @@ const Linkcccp_CBZPreview: React.FC<{
             <div
                 ref={containerRef}
                 className={`overflow-y-auto ${isFullscreen
-                    ? 'h-screen bg-black'
+                    ? 'h-screen bg-black relative cursor-pointer'
                     : 'h-96 md:h-[32rem] lg:h-[40rem] bg-white dark:bg-gray-900'
                     }`}
+                onClick={handleFullscreenContainerClick}
             >
                 <div className="flex flex-col items-center space-y-0">
                     {images.map((image, index) => (
@@ -272,12 +327,30 @@ const Linkcccp_CBZPreview: React.FC<{
                                     target.style.display = 'none'
                                 }}
                             />
-                            <p className="absolute top-2 right-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 bg-opacity-70 px-2 py-1 rounded">
-                                {index + 1} / {images.length}
-                            </p>
                         </div>
                     ))}
                 </div>
+
+                {/* 全屏模式下的进度条 */}
+                {isFullscreen && showProgressBar && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 p-4 flex items-center gap-4 z-50">
+                        <span className="text-white text-sm min-w-fit">
+                            {Math.round((containerRef.current?.scrollTop || 0) / ((containerRef.current?.scrollHeight || 1) - (containerRef.current?.clientHeight || 1)) * (images.length - 1)) + 1} / {images.length}
+                        </span>
+                        <input
+                            type="range"
+                            min="0"
+                            max={Math.max(0, images.length - 1)}
+                            value={Math.round((containerRef.current?.scrollTop || 0) / ((containerRef.current?.scrollHeight || 1) - (containerRef.current?.clientHeight || 1)) * (images.length - 1))}
+                            onChange={handleProgressBarChange}
+                            onMouseDown={handleProgressBarMouseDown}
+                            onMouseUp={handleProgressBarMouseUp}
+                            onTouchStart={handleProgressBarMouseDown}
+                            onTouchEnd={handleProgressBarMouseUp}
+                            className="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                    </div>
+                )}
 
                 {/* 阅读完成提示 */}
                 <div className="text-center p-8 text-gray-500 dark:text-gray-400">
