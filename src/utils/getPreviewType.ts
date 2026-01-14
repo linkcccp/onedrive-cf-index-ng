@@ -10,6 +10,7 @@ export const preview = {
   audio: 'audio',
   office: 'ms-office',
   epub: 'epub',
+  linkcccp_cbz: 'linkcccp_cbz',
   url: 'url',
 }
 
@@ -77,6 +78,8 @@ export const extensions = {
   flac: preview.audio,
 
   epub: preview.epub,
+
+  cbz: preview.linkcccp_cbz,
 
   url: preview.url,
 }

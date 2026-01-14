@@ -90,6 +90,8 @@ const extensions = {
   mobi: icons.book,
   azw3: icons.book,
 
+  cbz: icons.book,
+
   url: icons.link,
 }
 
