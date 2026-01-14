@@ -5,13 +5,10 @@ import { faDownload, faExpand, faCompress, faSpinner } from '@fortawesome/free-s
 
 import toast from 'react-hot-toast'
 import { DownloadBtnContainer, PreviewContainer } from './Containers'
-import { DownloadButton } from '../DownloadBtnGtoup'
+import DownloadButtonGroup from '../DownloadBtnGtoup'
 import { OdFileObject } from '../../types'
 
-// Dynamic import JSZip to reduce bundle size
-const JSZip = dynamic(() => import('jszip'), { ssr: false })
-
-export const linkcccp_CBZPreview: React.FC<{
+const Linkcccp_CBZPreview: React.FC<{
     file: OdFileObject
 }> = ({ file }) => {
     const [isLoading, setIsLoading] = useState(true)
@@ -216,10 +213,7 @@ export const linkcccp_CBZPreview: React.FC<{
                         <p className="text-lg font-semibold mb-2">加载失败</p>
                         <p className="text-sm">{error}</p>
                         <DownloadBtnContainer>
-                            <DownloadButton
-                                downloadUrl={file['@microsoft.graph.downloadUrl']}
-                                filename={file.name}
-                            />
+                            <DownloadButtonGroup />
                         </DownloadBtnContainer>
                     </div>
                 </div>
@@ -248,10 +242,7 @@ export const linkcccp_CBZPreview: React.FC<{
                     >
                         <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
                     </button>
-                    <DownloadButton
-                        downloadUrl={file['@microsoft.graph.downloadUrl']}
-                        filename={file.name}
-                    />
+                    <DownloadButtonGroup />
                 </div>
             </div>
 
@@ -298,3 +289,4 @@ export const linkcccp_CBZPreview: React.FC<{
         </PreviewContainer>
     )
 }
+export default Linkcccp_CBZPreview

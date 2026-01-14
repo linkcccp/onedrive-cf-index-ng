@@ -146,12 +146,12 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 
 ### 🛠️ 自定义开发规范
 
-**本项目所有非官方添加的功能、组件和预览类型，统一使用 `linkcccp_` 作为前缀。**
+**本项目所有非官方添加的功能、组件和预览类型，统一使用 `Linkcccp_` 作为前缀。**
 
 #### 当前已添加的自定义功能：
 
 - **功能名**：CBZ 漫画长条预览
-- **涉及文件**：`src/components/previews/linkcccp_CBZPreview.tsx`
-- **预览类型标识**：`linkcccp_cbz`
+- **涉及文件**：`src/components/previews/Linkcccp_CBZPreview.tsx`
+- **预览类型标识**：`Linkcccp_cbz`
 
 > 这样可以确保以后无论是开发者还是 AI 助手，在维护本项目时都能遵循统一的自定义扩展命名规范。

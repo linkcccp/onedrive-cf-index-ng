@@ -17,9 +17,9 @@
   - 配置文件位于 `config/site.config.js` 和 `config/api.config.js`。
 
 ## 3. 自定义开发规范 (强制执行)
-- **命名空间隔离**：为了区分官方代码与自定义功能，**所有**由我（用户）要求添加的新组件、新文件、新函数、新预览类型，必须统一添加 `linkcccp_` 前缀。
-  - 示例：`linkcccp_CBZPreview.tsx`、`linkcccp_cbz` 类型。
+- **命名空间隔离**：为了区分官方代码与自定义功能，**所有**由我（用户）要求添加的新组件、新文件、新函数、新预览类型，必须统一添加 `Linkcccp_` 前缀。
+  - 示例：`Linkcccp_CBZPreview.tsx`、`Linkcccp_cbz` 类型。
 - **代码合并**：修改 `FileListing.tsx` 等核心文件时，必须保持原有的代码风格，并使用动态导入（Dynamic Import）来加载自定义组件。
 
 ## 4. 维护参考
-- 修改逻辑前，请优先参考项目根目录下的 `linkcccp_feature.md` 文件，那里记录了项目的详细功能地图和已有的修改点。
+- 修改逻辑前，请优先参考项目根目录下的 `Linkcccp_feature.md` 文件，那里记录了项目的详细功能地图和已有的修改点。

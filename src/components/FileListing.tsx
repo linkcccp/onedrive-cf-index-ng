@@ -43,7 +43,7 @@ import FolderGridLayout from './FolderGridLayout'
 const EPUBPreview = dynamic(() => import('./previews/EPUBPreview'), {
   ssr: false,
 })
-const linkcccp_CBZPreview = dynamic(() => import('./previews/linkcccp_CBZPreview'), {
+const Linkcccp_CBZPreview = dynamic(() => import('./previews/Linkcccp_CBZPreview'), {
   ssr: false,
 })
 
@@ -411,7 +411,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
           return <EPUBPreview file={file} />
 
         case preview.linkcccp_cbz:
-          return <linkcccp_CBZPreview file={file} />
+          return <Linkcccp_CBZPreview file={file} />
 
         case preview.url:
           return <URLPreview file={file} />
