@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import dynamic from 'next/dynamic'
+import { useRouter } from 'next/router'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faDownload, faExpand, faCompress, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { faExpand, faCompress, faSpinner } from '@fortawesome/free-solid-svg-icons'
 
 import toast from 'react-hot-toast'
 import { DownloadBtnContainer, PreviewContainer } from './Containers'
 import DownloadButtonGroup from '../DownloadBtnGtoup'
 import { OdFileObject } from '../../types'
+import { getStoredToken } from '../../utils/protectedRouteHandler'
 
 const Linkcccp_CBZPreview: React.FC<{
     file: OdFileObject
 }> = ({ file }) => {
+    const { asPath } = useRouter()
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string>('')
     const [images, setImages] = useState<{ name: string; url: string; blob: Blob }[]>([])
@@ -123,13 +125,12 @@ const Linkcccp_CBZPreview: React.FC<{
                 setIsLoading(true)
                 setError('')
 
-                const downloadUrl = file['@microsoft.graph.downloadUrl']
-                if (!downloadUrl) {
-                    throw new Error('无法获取文件下载链接')
-                }
+                // 通过项目 API 获取文件内容（与其他预览组件一致的方式）
+                const hashedToken = getStoredToken(asPath)
+                const requestUrl = `/api/raw/?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
 
                 // 下载文件
-                const response = await fetch(downloadUrl)
+                const response = await fetch(requestUrl)
                 if (!response.ok) {
                     throw new Error(`下载失败: ${response.statusText}`)
                 }
@@ -185,7 +186,7 @@ const Linkcccp_CBZPreview: React.FC<{
                 URL.revokeObjectURL(img.url)
             })
         }
-    }, [file])
+    }, [asPath])
 
     if (isLoading) {
         return (
