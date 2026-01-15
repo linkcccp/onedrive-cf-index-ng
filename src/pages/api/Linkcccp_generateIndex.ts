@@ -158,6 +158,18 @@ function escapeMarkdownSpecialChars(filename: string): string {
 }
 
 /**
+ * 对文本进行 HTML 转义，防止在 HTML 链接文本中破坏结构
+ */
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
+/**
  * 对 URL 路径进行完整编码
  * 处理中文路径和特殊符号，确保浏览器可以正确解析
  * 
@@ -188,21 +200,24 @@ function convertToMarkdown(items: IndexNode[], depth: number = 0): string {
         try {
             // 编码处理：文件名路径必须经过 encodeURIComponent 处理
             const encodedPath = encodeUrlPath(item.path)
-
-            // Markdown 安全转义：特殊符号不会导致语法崩溃
+            // Markdown 安全转义：用于降级显示
             const escapedName = escapeMarkdownSpecialChars(item.name)
+            // HTML 转义：用于放在 <a> 文本中，避免中括号/圆括号等破坏 Markdown 链接语法
+            const htmlEscapedName = escapeHtml(item.name)
 
             const icon = item.isFolder ? '📁' : '📄'
 
+            // 使用 HTML 链接替代 Markdown 原生的 [text](url) 语法，
+            // 避免文件名中包含未配对的 `]` 或 `)` 导致链接断裂
             if (item.isFolder) {
-                // 文件夹用粗体加链接
-                markdown += `${indent}- ${icon} **[${escapedName}](/${encodedPath})**\n`
+                // 文件夹用粗体包裹 HTML 链接
+                markdown += `${indent}- ${icon} **<a href="/${encodedPath}">${htmlEscapedName}</a>**\n`
                 if (item.children && item.children.length > 0) {
                     markdown += convertToMarkdown(item.children, depth + 1)
                 }
             } else {
-                // 文件用普通链接
-                markdown += `${indent}- ${icon} [${escapedName}](/${encodedPath})\n`
+                // 文件用普通 HTML 链接
+                markdown += `${indent}- ${icon} <a href="/${encodedPath}">${htmlEscapedName}</a>\n`
             }
         } catch (error) {
             console.error(`Error converting item to markdown: ${item.name}`, error)
