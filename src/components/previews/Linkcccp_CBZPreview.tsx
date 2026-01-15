@@ -72,48 +72,49 @@ const Linkcccp_CBZPreview: React.FC<{
 
     // --- 加载单页图片逻辑 ---
     const loadPageImage = useCallback(async (index: number) => {
-        setImages(prev => {
-            if (prev[index] && !prev[index].url && !prev[index].loading) {
-                const newImages = [...prev]
-                newImages[index].loading = true
+        setImages(current => {
+            if (current[index] && !current[index].url && !current[index].loading) {
+                const nextImages = [...current]
+                nextImages[index] = { ...nextImages[index], loading: true }
 
-                const entry = newImages[index].entry
-
-                // 动态导入并开始解压
-                import('@zip.js/zip.js').then(zip => {
-                    entry.getData(new zip.BlobWriter()).then(blob => {
+                // 异步执行加载，不阻塞状态返回
+                import('@zip.js/zip.js').then(async (zip) => {
+                    try {
+                        const entry = nextImages[index].entry
+                        const blob = await entry.getData(new zip.BlobWriter())
                         const url = URL.createObjectURL(blob)
-                        setImages(current => {
-                            const updated = [...current]
+
+                        setImages(latest => {
+                            const updated = [...latest]
                             if (updated[index]) {
-                                updated[index] = { ...updated[index], url, loading: false }
+                                updated[index] = { ...updated[index], url, loading: false, error: false }
                             }
                             return updated
                         })
-                    }).catch(err => {
-                        console.error(`Page ${index} load error:`, err)
-                        setImages(current => {
-                            const updated = [...current]
+                    } catch (err) {
+                        console.error(`Page ${index} extraction error:`, err)
+                        setImages(latest => {
+                            const updated = [...latest]
                             if (updated[index]) {
-                                updated[index] = { ...updated[index], error: true, loading: false }
+                                updated[index] = { ...updated[index], loading: false, error: true }
                             }
                             return updated
                         })
-                    })
+                    }
                 })
-                return newImages
+                return nextImages
             }
-            return prev
+            return current
         })
     }, [])
 
-    // --- 内存清理逻辑 (Revoke Object URLs) ---
+    // --- 内存清理逻辑 ---
     const cleanupOffscreenImages = useCallback((currentIndex: number) => {
         setImages(prev => {
             let changed = false
             const newImages = prev.map((img, idx) => {
-                // 如果图片在当前页面的前 5 页或后 5 页之外，且已经加载过，则卸载以节省内存
-                if (img.url && Math.abs(idx - currentIndex) > 10) {
+                // 设置更宽松的缓存范围（前后 15 页），避免频繁重复加载
+                if (img.url && Math.abs(idx - currentIndex) > 15) {
                     URL.revokeObjectURL(img.url)
                     changed = true
                     return { ...img, url: undefined, loading: false }
@@ -135,8 +136,15 @@ const Linkcccp_CBZPreview: React.FC<{
                 const hashedToken = getStoredToken(asPath)
                 const requestUrl = `/api/raw/?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
 
-                // 使用 HttpReader 进行 Range 分段读取
-                const reader = new zip.HttpReader(requestUrl, { useRangeHeader: true })
+                // 【核心优化】预取真实直链。Range: bytes=0-0 确保不下载文件内容，只为拿到最终 URL
+                const prefetch = await fetch(requestUrl, { headers: { 'Range': 'bytes=0-0' } })
+                if (!prefetch.ok && prefetch.status !== 206) {
+                    throw new Error(`无法连接网盘: ${prefetch.statusText}`)
+                }
+                const directUrl = prefetch.url
+
+                // 使用直链直接访问微软服务器，极致提升速度
+                const reader = new zip.HttpReader(directUrl, { useRangeHeader: true })
                 const zipReader = new zip.ZipReader(reader)
                 zipReaderRef.current = zipReader
 
@@ -146,7 +154,7 @@ const Linkcccp_CBZPreview: React.FC<{
                     .sort((a, b) => naturalSort(a.filename, b.filename))
 
                 if (imageEntries.length === 0) {
-                    throw new Error('此 CBZ 文件中没有找到有效的图片')
+                    throw new Error('此压缩包中未找到漫画图片')
                 }
 
                 setImages(imageEntries.map(entry => ({
@@ -158,21 +166,17 @@ const Linkcccp_CBZPreview: React.FC<{
 
                 setIsLoading(false)
             } catch (err: any) {
-                console.error('CBZ init failed:', err)
-                setError(err.message || '加载文件失败，请重试')
+                console.error('CBZ Init Error:', err)
+                setError(err.message || '初始化失败，请检查网络')
+                setIsLoading(false)
             }
         }
 
         initZip()
 
         return () => {
-            if (zipReaderRef.current) {
-                zipReaderRef.current.close()
-            }
-            // 彻底清理所有内存占用的图片 URL
-            images.forEach(img => {
-                if (img.url) URL.revokeObjectURL(img.url)
-            })
+            if (zipReaderRef.current) zipReaderRef.current.close()
+            images.forEach(img => img.url && URL.revokeObjectURL(img.url))
         }
     }, [asPath])
 
