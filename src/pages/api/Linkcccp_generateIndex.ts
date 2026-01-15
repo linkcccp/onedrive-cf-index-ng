@@ -256,7 +256,7 @@ function generateIndexContent(items: IndexNode[], generatedTime: string): string
 }
 
 /**
- * 将 index.md 上传到 OneDrive 根目录
+ * 将 index.md 上传到网站根目录（OneDrive 中的 baseDirectory）
  * 支持重试和完整的错误处理
  * 
  * @param accessToken OneDrive API access token
@@ -264,9 +264,16 @@ function generateIndexContent(items: IndexNode[], generatedTime: string): string
  */
 async function uploadIndexFile(accessToken: string, content: string): Promise<void> {
     const indexFileName = 'index.md'
+    const baseDir = siteConfig.baseDirectory || '/'
+
+    // 构造上传路径：确保它是相对于 OneDrive 根目录的路径
+    // 如果 baseDir 是 '/share'，则路径是 '/share/index.md'
+    // 如果 baseDir 是 '/'，则路径是 '/index.md'
+    const fullPath = pathPosix.join(baseDir, indexFileName)
+
     // 修复上传 URL 格式：必须使用 :/ 分隔符来指定路径
-    // 如果 apiConfig.driveApi 类似于 .../drive，则路径应为 .../drive/root:/index.md:/content
-    const uploadUrl = `${apiConfig.driveApi}/root:/${indexFileName}:/content`
+    const uploadUrl = `${apiConfig.driveApi}/root:${fullPath}:/content`
+
     const maxRetries = 3
     let lastError: any
     let lastResponse: any
@@ -399,17 +406,8 @@ export default async function handler(req: NextRequest): Promise<Response> {
     try {
         console.log('🚀 Starting index generation...')
 
-
-        // 权限检查：确保只有管理员可以触发
-        // 如果你在 site.config.js 中配置了 protectedRoutes，我们可以在这里添加检查
-        // 或者使用更简单的保护：需要在 headers 中提供特殊的 Secret Key
-        // 为了简单且安全，我们检查请求是否包含有效的 API Key（如果配置了 CLOUDFLARE_API_KEY）
-        // 或者简单地检查是否为本地开发环境
-
-        // [安全增强] 检查管理访问密钥
-        // 你需要在 Cloudflare Pages 的设置 -> Environment Variables 中添加变量：
-        // LINKCCCP_ACCESS_KEY = 你的密码
-        // 如果未设置环境变量，默认密码为 '123456' (强烈建议修改)
+        // [安全增强] 检查管理访问密钥 (LINKCCCP_ACCESS_KEY)
+        // 从环境变量获取预设密码，若未设置则默认为 '123456'
         const serverAccessKey = process.env.LINKCCCP_ACCESS_KEY || '123456'
         const clientAccessKey = req.headers.get('x-linkcccp-access-key')
 
