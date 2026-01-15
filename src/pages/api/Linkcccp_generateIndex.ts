@@ -180,7 +180,11 @@ function encodeUrlPath(path: string): string {
     // 使用 encodeURIComponent 编码整个路径，然后保留 / 分隔符
     return path
         .split('/')
-        .map(segment => encodeURIComponent(segment))
+        .map(segment => {
+            // encodeURIComponent 不会对圆括号进行编码，某些 Markdown 渲染器或环境会把未编码的圆括号视作语法，导致链接被截断。
+            // 这里在 encodeURIComponent 基础上额外编码 '(' 和 ')'。
+            return encodeURIComponent(segment).replace(/\(/g, '%28').replace(/\)/g, '%29')
+        })
         .join('/')
 }
 
