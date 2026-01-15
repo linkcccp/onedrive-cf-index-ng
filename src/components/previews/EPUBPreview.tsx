@@ -61,6 +61,13 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   const [location, setLocation] = useState<string>()
   const onLocationChange = (cfiStr: string) => setLocation(cfiStr)
 
+  if (loading || !blobUrl) {
+    return (
+      <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
+        <Loading loadingText={`Downloading EPUB ${downloadProgress}% ...`} />
+      </div>
+    )
+  }
 
   // Fix for not valid epub files according to
   // https://github.com/gerhardsletten/react-reader/issues/33#issuecomment-673964947
@@ -94,7 +101,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
             <ReactReader
               url={blobUrl}
               getRendition={rendition => fixEpub(rendition)}
-              loadingView={loading ? <Loading loadingText={`Downloading ${downloadProgress}% ...`} /> : <Loading loadingText="Parsing EPUB..." />}
+              loadingView={<Loading loadingText="Parsing EPUB..." />}
               location={location}
               locationChanged={onLocationChange}
               epubInitOptions={{ openAs: 'epub' }}

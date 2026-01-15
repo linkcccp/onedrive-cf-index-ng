@@ -66,7 +66,7 @@ export const Linkcccp_downloadAndCache = async (
     let loaded = 0
 
     const reader = response.body!.getReader()
-    const chunks: Uint8Array[] = []
+    const chunks: any[] = []
 
     while (true) {
         const { done, value } = await reader.read()
