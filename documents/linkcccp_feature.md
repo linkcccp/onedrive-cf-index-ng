@@ -152,8 +152,16 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 #### 当前已添加的自定义功能：
 
 - **功能名**：CBZ 漫画长条预览
-- **涉及文件**：`src/components/previews/Linkcccp_CBZPreview.tsx`
-- **预览类型标识**：`Linkcccp_cbz`
+  - **涉及文件**：`src/components/previews/Linkcccp_CBZPreview.tsx`
+  - **预览类型标识**：`Linkcccp_cbz`
+
+- **功能名**：全站通用离线缓存系统
+  - **涉及文件**：`src/utils/Linkcccp_UniversalCache.ts`
+  - **作用**：为 PDF、EPUB、CBZ 提供永久性本地数据库存储。
+
+- **功能名**：渐进式 Web 应用 (PWA)
+  - **核心逻辑**：基于 `next-pwa` 插件。
+  - **注意**：`site.webmanifest` 遵循 Web 行业标准命名，不添加前缀以确保浏览器最高兼容性。
 
 > 这样可以确保以后无论是开发者还是 AI 助手，在维护本项目时都能遵循统一的自定义扩展命名规范。
 
@@ -161,37 +169,32 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 
 ### 🎯 技术特性
 
-#### ① 极致流畅持久化模式 (Persistent Caching)
-- **本地零流量重载**：引入 IndexedDB 存储引擎，将整包 CBZ 缓存至浏览器本地。再次访问相同文件时，直接从本地读取，**不消耗网盘流量**。
-- **智能增量更新**：自动校验 \`lastModified\` 时间戳。仅当网盘文件版本更新时才重新触发下载，平衡“新鲜度”与“省流量”。
-- **全量内存加载**：取消了传统的“视口外销毁”逻辑。解压后的图片永久保留在当前会话中，支持前后极速翻转、无任何二次加载。
-- **整流式预载进度条**：通过浏览器流式 API (\`ReadableStream\`) 实时反馈下载百分比，让用户对“先苦后甜”的加载过程心中有数。
+#### ① 极致流畅持久化模式 (Linkcccp_UniversalCache)
+- **本地零流量重载**：基于 IndexedDB 存储，将 PDF、EPUB、CBZ 等大文件缓存至本地。再次访问相同文件时直接从本地读取，**不消耗网盘流量**。
+- **智能增量更新**：自动校验 `lastModified` 时间戳。仅当文件更新时才重新下载，平衡“新鲜度”与“省流量”。
+- **全量内存加载**：解压后的漫画图片永久保留在当前会话中，支持前后极速翻转、无任何二次加载。
+- **整流式预载进度条**：通过流式 API 实时反馈下载百分比，让加载过程透明可控。
 
-#### ② 工业级渲染优化
-- **无缝衔接布局**：图片使用 \`block\` 布局和 \`w-full\` 宽度对齐，完全消除不同长宽比图片间的空隙，实现“长条漫”丝滑体验。
-- **渲染隔离 (Memo)**：封装独立的 \`Linkcccp_ImageItem\` 组件，确保单页加载不会引发整个列表的重绘。
-- **异步解码**：开启 \`decoding="async"\`，彻底消除快速滚动时的白屏块和掉帧。
+#### ② PWA 全栈离线能力
+- **离线访问**：支持断网状态下加载网站外壳、基础图标及已缓存的文件列表。
+- **App 化体验**：补全了 `site.webmanifest` 规范，支持安装到桌面并实现沉浸式全屏浏览。
 
-#### ③ 交互与进度管理
-- **双向联动进度条**：悬浮滑块支持毫秒级跳转，并与页面滚动双向同步。
-- **深度记忆**：自动记忆每个漫画的阅读位置。
+#### ③ 工业级渲染优化
+- **无缝衔接布局**：漫画图片使用 `block` 布局，消除空隙，实现“长条漫”丝滑体验。
+- **渲染隔离 (Memo)**：确保单页加载不会引发整个列表的重绘。
+- **异步解码**：开启 `decoding="async"`，彻底消除快速滚动时的白屏块。
 
-### 🛠️ 核心代码逻辑简述
-
-- **初始化**：优先检查 IndexedDB。缓存失效则通过 \`/api/raw\` 流式获取全量 Blob 并入库。
-- **解压器**：使用 \`BlobReader\` 挂载本地数据，配合 Web Workers 进行后台解压。
-- **排序**：采用 \`naturalSort\` 处理页码（支持 \`1.jpg\`, \`10.jpg\` 等自然序列）。
+---
 
 ### 📋 维护记录：已修复的坑
 
 | 坑位 | 问题描述 | 解决方案 |
 |------|---------|---------|
-| **Range 请求报错** | 直接请求项目 API 会导致 302 重定向丢失 Range 头 | 先 Fetch 一次探测最终 Redirect URL，再将其传给 zip.js |
-| **TS2353 报错** | HttpOptions 不支持 size 属性 | 先实例化 Reader，再手动赋值 \`reader.size = totalSize\` |
-| **内存泄漏** | 大量 Blob URL 堆积导致系统卡顿 | 引入 \`cleanupOffscreenImages\` 机制，强制回收视口外的资源 |
-| **图片空隙** | 默认 Inline 布局导致底部留白 | 设置 \`display: block\` 并取消 \`border\` |
-| **TS2345 报错** | BlobPart[] 类型不匹配 | 在创建 Blob 时使用 \`as BlobPart[]\` 进行强制类型转换 |
-| **流量浪费** | 每次查看都要重新从 OneDrive 下载 | 引入 IndexedDB 实现本地持久化存储，对比 lastModified 决定是否重用缓存 |
+| **TS2769 (EPUB)** | ReactReader 接收 null 作为 url 导致构建失败 | 增加 `loading || !blobUrl` 前置判断，确保类型安全 |
+| **TS2345 (Blob)** | Uint8Array 缓冲区类型不匹配 (SharedArrayBuffer) | 将下载块类型定义为 `any[]` 以绕过严格校验 |
+| **PWA 无效** | Manifest 缺少 `start_url` 导致浏览器不识别 | 补全 `public/site.webmanifest` 中的关键入口配置 |
+| **内存泄漏** | 大量 Blob URL 堆积导致系统卡顿 | 在 `useEffect` 清理函数中增加 `URL.revokeObjectURL` |
+| **Range 请求报错** | 302 重定向导致 Range 头丢失 | 先进行探测请求获取最终 URL 再传给下载器 |
 
 ## 6. 文件索引生成功能 (Linkcccp_generateIndex)
 

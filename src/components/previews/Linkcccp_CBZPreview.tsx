@@ -8,6 +8,7 @@ import { PreviewContainer } from './Containers'
 import DownloadButtonGroup from '../DownloadBtnGtoup'
 import { OdFileObject } from '../../types'
 import { getStoredToken } from '../../utils/protectedRouteHandler'
+import { Linkcccp_getFromCache, Linkcccp_saveToCache } from '../../utils/Linkcccp_UniversalCache'
 
 // 定义图片状态接口
 interface Linkcccp_CBZImage {
@@ -51,44 +52,6 @@ const Linkcccp_ImageItem = memo(({ img, index }: { img: Linkcccp_CBZImage; index
     )
 })
 Linkcccp_ImageItem.displayName = 'Linkcccp_ImageItem'
-
-// --- 数据库缓存逻辑 ---
-const DB_NAME = 'Linkcccp_CBZ_Cache'
-const STORE_NAME = 'files'
-
-const Linkcccp_getDB = (): Promise<IDBDatabase> => {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1)
-        request.onupgradeneeded = () => {
-            const db = request.result
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME, { keyPath: 'id' })
-            }
-        }
-        request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error)
-    })
-}
-
-const Linkcccp_saveToCache = async (id: string, blob: Blob, lastModified: string) => {
-    try {
-        const db = await Linkcccp_getDB()
-        const tx = db.transaction(STORE_NAME, 'readwrite')
-        tx.objectStore(STORE_NAME).put({ id, blob, lastModified, timestamp: Date.now() })
-    } catch (e) { console.error('Cache save failed', e) }
-}
-
-const Linkcccp_getFromCache = async (id: string): Promise<{ blob: Blob, lastModified: string } | null> => {
-    try {
-        const db = await Linkcccp_getDB()
-        return new Promise((resolve) => {
-            const tx = db.transaction(STORE_NAME, 'readonly')
-            const request = tx.objectStore(STORE_NAME).get(id)
-            request.onsuccess = () => resolve(request.result || null)
-            request.onerror = () => resolve(null)
-        })
-    } catch (e) { return null }
-}
 
 const Linkcccp_CBZPreview: React.FC<{
     file: OdFileObject

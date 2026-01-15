@@ -5,7 +5,7 @@ import { getStoredToken } from '../../utils/protectedRouteHandler'
 import DownloadButtonGroup from '../DownloadBtnGtoup'
 import { DownloadBtnContainer } from './Containers'
 import Loading from '../Loading'
-import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_indexedDB'
+import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_UniversalCache'
 
 const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
   const { asPath } = useRouter()

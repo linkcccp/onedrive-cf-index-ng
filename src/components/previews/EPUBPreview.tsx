@@ -9,7 +9,7 @@ import DownloadButtonGroup from '../DownloadBtnGtoup'
 import { DownloadBtnContainer } from './Containers'
 import { getStoredToken } from '../../utils/protectedRouteHandler'
 
-import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_indexedDB'
+import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_UniversalCache'
 
 const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   const { asPath } = useRouter()
