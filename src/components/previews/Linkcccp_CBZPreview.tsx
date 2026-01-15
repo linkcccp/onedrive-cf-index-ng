@@ -125,7 +125,7 @@ const Linkcccp_CBZPreview: React.FC<{
     }
 
     // --- 进度记忆逻辑 ---
-    const getStorageKey = () => `cbz-progress-${file.id || file.name}`
+    const getStorageKey = useCallback(() => `cbz-progress-${file.id || file.name}`, [file.id, file.name])
 
     const saveProgress = useCallback(
         (scrollTop: number) => {
@@ -133,7 +133,7 @@ const Linkcccp_CBZPreview: React.FC<{
                 localStorage.setItem(getStorageKey(), scrollTop.toString())
             } catch (error) { }
         },
-        [file.id, file.name]
+        [getStorageKey]
     )
 
     const loadProgress = useCallback((): number => {
@@ -143,7 +143,7 @@ const Linkcccp_CBZPreview: React.FC<{
         } catch (error) {
             return 0
         }
-    }, [file.id, file.name])
+    }, [getStorageKey])
 
     // --- 加载单页图片逻辑 (现在直接从内存解压，极快) ---
     const loadPageImage = useCallback(async (index: number) => {
@@ -289,7 +289,7 @@ const Linkcccp_CBZPreview: React.FC<{
                 return []
             })
         }
-    }, [asPath])
+    }, [asPath, file.id, file.lastModifiedDateTime])
 
     // --- 交互与滚动监听 ---
     useEffect(() => {

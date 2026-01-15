@@ -29,6 +29,8 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   // Linkcccp: 离线缓存加载逻辑
   useEffect(() => {
     let active = true
+    let currentBlobUrl: string | null = null
+
     const loadFile = async () => {
       try {
         setLoading(true)
@@ -39,11 +41,13 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
           fileKey,
           file.lastModifiedDateTime,
           downloadUrl,
-          (progress) => active && setDownloadProgress(progress)
+          progress => active && setDownloadProgress(progress)
         )
 
         if (active) {
-          setBlobUrl(URL.createObjectURL(blob))
+          const url = URL.createObjectURL(blob)
+          currentBlobUrl = url
+          setBlobUrl(url)
           setLoading(false)
         }
       } catch (e) {
@@ -54,9 +58,9 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     loadFile()
     return () => {
       active = false
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
+      if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl)
     }
-  }, [asPath, file.id, file.lastModifiedDateTime])
+  }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
 
   const [location, setLocation] = useState<string>()
   const onLocationChange = (cfiStr: string) => setLocation(cfiStr)

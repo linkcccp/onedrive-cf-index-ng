@@ -17,6 +17,8 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
 
   useEffect(() => {
     let active = true
+    let currentBlobUrl: string | null = null
+
     const loadFile = async () => {
       try {
         setLoading(true)
@@ -27,11 +29,13 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
           fileKey,
           file.lastModifiedDateTime,
           downloadUrl,
-          (progress) => active && setDownloadProgress(progress)
+          progress => active && setDownloadProgress(progress)
         )
 
         if (active) {
-          setBlobUrl(URL.createObjectURL(blob))
+          const url = URL.createObjectURL(blob)
+          currentBlobUrl = url
+          setBlobUrl(url)
           setLoading(false)
         }
       } catch (e) {
@@ -42,9 +46,9 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
     loadFile()
     return () => {
       active = false
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
+      if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl)
     }
-  }, [asPath, file.id, file.lastModifiedDateTime])
+  }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
 
   // 原有逻辑作为 fallback 或者不用
   /*
@@ -54,7 +58,7 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
   const url = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${pdfPath}`
   */
 
-  if (loading) {
+  if (loading || !blobUrl) {
     return (
       <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
         <Loading loadingText={`Downloading PDF ${downloadProgress}% ...`} />
