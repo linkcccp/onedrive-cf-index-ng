@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { useRouter } from 'next/router'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faExpand, faCompress, faSpinner, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons'
@@ -18,6 +18,40 @@ interface Linkcccp_CBZImage {
     entry: any // zip.js 的 Entry 对象
 }
 
+// 子组件：单张图片项，由 memo 包裹防止父列表频繁刷新导致的卡顿
+const Linkcccp_ImageItem = memo(({ img, index }: { img: Linkcccp_CBZImage; index: number }) => {
+    return (
+        <div
+            data-index={index}
+            className="relative flex min-h-[500px] w-full flex-col items-center justify-center border-b border-gray-100 dark:border-gray-800 last:border-0"
+        >
+            {img.url ? (
+                <img
+                    src={img.url}
+                    alt={`Page ${index + 1}`}
+                    className="h-auto max-w-full"
+                    decoding="async"
+                />
+            ) : (
+                <div className="flex flex-col items-center py-40 text-gray-400">
+                    {img.error ? (
+                        <>
+                            <FontAwesomeIcon icon={faExclamationTriangle} className="mb-2 text-orange-400" />
+                            <span className="text-xs">加载失败 {index + 1}</span>
+                        </>
+                    ) : (
+                        <>
+                            <FontAwesomeIcon icon={faSpinner} spin className="mb-2 opacity-30" />
+                            <span className="text-xs opacity-40">加载中 {index + 1}...</span>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+})
+Linkcccp_ImageItem.displayName = 'Linkcccp_ImageItem'
+
 const Linkcccp_CBZPreview: React.FC<{
     file: OdFileObject
 }> = ({ file }) => {
@@ -29,9 +63,9 @@ const Linkcccp_CBZPreview: React.FC<{
 
     // Refs
     const containerRef = useRef<HTMLDivElement>(null)
-    const zipModuleRef = useRef<any>(null) // 缓存 zip 模块防止重复导入
+    const zipModuleRef = useRef<any>(null)
     const zipReaderRef = useRef<any>(null)
-    const imageRefsRef = useRef<(HTMLDivElement | null)[]>([])
+    const imageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map())
 
     const [currentPageIndex, setCurrentPageIndex] = useState(0)
     const [isUserDragging, setIsUserDragging] = useState(false)
@@ -45,14 +79,14 @@ const Linkcccp_CBZPreview: React.FC<{
         })
     }
 
-    // 检查文件是否为图片 (增加对常见漫画格式的支持)
+    // 检查文件是否为图片
     const isImageFile = (filename: string): boolean => {
         const imageExtensions = /\.(jpe?g|png|gif|webp|bmp|svg|avif)$/i
         return imageExtensions.test(filename)
     }
 
     // --- 进度记忆逻辑 ---
-    const getStorageKey = () => `cbz-progress-${file.id || file['@microsoft.graph.downloadUrl']}`
+    const getStorageKey = () => `cbz-progress-${file.id || file.name}`
 
     const saveProgress = useCallback(
         (scrollTop: number) => {
@@ -60,7 +94,7 @@ const Linkcccp_CBZPreview: React.FC<{
                 localStorage.setItem(getStorageKey(), scrollTop.toString())
             } catch (error) { }
         },
-        [file.id]
+        [file.id, file.name]
     )
 
     const loadProgress = useCallback((): number => {
@@ -70,48 +104,48 @@ const Linkcccp_CBZPreview: React.FC<{
         } catch (error) {
             return 0
         }
-    }, [file.id])
+    }, [file.id, file.name])
 
     // --- 加载单页图片逻辑 ---
     const loadPageImage = useCallback(async (index: number) => {
-        setImages(current => {
-            if (current[index] && !current[index].url && !current[index].loading) {
-                const nextImages = [...current]
-                nextImages[index] = { ...nextImages[index], loading: true }
+        setImages(prev => {
+            const img = prev[index]
+            if (!img || img.url || img.loading) return prev
 
-                const processExtraction = async () => {
-                    try {
-                        // 确保使用缓存的模块
-                        const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
-                        zipModuleRef.current = zip
+            // 异步执行提取
+            const performExtraction = async () => {
+                try {
+                    const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
+                    zipModuleRef.current = zip
 
-                        const entry = nextImages[index].entry
-                        const blob = await entry.getData(new zip.BlobWriter())
-                        const url = URL.createObjectURL(blob)
+                    const entry = img.entry
+                    const blob = await entry.getData(new zip.BlobWriter())
+                    const url = URL.createObjectURL(blob)
 
-                        setImages(latest => {
-                            const updated = [...latest]
-                            if (updated[index]) {
-                                updated[index] = { ...updated[index], url, loading: false, error: false }
-                            }
-                            return updated
-                        })
-                    } catch (err) {
-                        console.error(`Page ${index} extraction error:`, err)
-                        setImages(latest => {
-                            const updated = [...latest]
-                            if (updated[index]) {
-                                updated[index] = { ...updated[index], loading: false, error: true }
-                            }
-                            return updated
-                        })
-                    }
+                    setImages(latest => {
+                        const updated = [...latest]
+                        if (updated[index]) {
+                            updated[index] = { ...updated[index], url, loading: false, error: false }
+                        }
+                        return updated
+                    })
+                } catch (err) {
+                    console.error(`Page ${index} extraction error:`, err)
+                    setImages(latest => {
+                        const updated = [...latest]
+                        if (updated[index]) {
+                            updated[index] = { ...updated[index], loading: false, error: true }
+                        }
+                        return updated
+                    })
                 }
-
-                processExtraction()
-                return nextImages
             }
-            return current
+
+            performExtraction()
+
+            const updated = [...prev]
+            updated[index] = { ...updated[index], loading: true }
+            return updated
         })
     }, [])
 
@@ -121,7 +155,8 @@ const Linkcccp_CBZPreview: React.FC<{
             let changed = false
             const newImages = prev.map((img, idx) => {
                 const distance = Math.abs(idx - currentIndex)
-                if (img.url && distance > 20) {
+                // 保留当前位置前后 15 页，其余释放内存
+                if (img.url && distance > 15) {
                     URL.revokeObjectURL(img.url)
                     changed = true
                     return { ...img, url: undefined, loading: false }
@@ -134,19 +169,23 @@ const Linkcccp_CBZPreview: React.FC<{
 
     // --- 初始化 Zip 资源 ---
     useEffect(() => {
+        let active = true
+
         const initZip = async () => {
             try {
                 setIsLoading(true)
                 setError('')
 
+                // 动态加载 zip.js
                 const zip = await import('@zip.js/zip.js')
+                if (!active) return
                 zipModuleRef.current = zip
                 zip.configure({ useWebWorkers: true })
 
                 const hashedToken = getStoredToken(asPath)
-                const requestUrl = `/api/raw/?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+                const requestUrl = `/api/raw?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
 
-                // 探测直链
+                // 探测直链并获取核心参数：最终 URL 和文件总大小
                 const prefetch = await fetch(requestUrl, {
                     method: 'GET',
                     headers: { Range: 'bytes=0-0' },
@@ -155,22 +194,31 @@ const Linkcccp_CBZPreview: React.FC<{
                 if (!prefetch.ok && prefetch.status !== 206) {
                     throw new Error(`无法连接网盘: ${prefetch.status}`)
                 }
+
                 const directUrl = prefetch.url
+                const rangeHeader = prefetch.headers.get('Content-Range')
+                // 获取精确大小，让 zip.js 能瞬间定位中央目录
+                const totalSize = rangeHeader ? parseInt(rangeHeader.split('/')[1]) : undefined
 
                 const reader = new zip.HttpReader(directUrl, {
                     useRangeHeader: true,
                     preventHeadRequest: true,
                 })
+                if (totalSize) {
+                    reader.size = totalSize
+                }
 
                 const zipReader = new zip.ZipReader(reader, { checkSignature: false })
                 zipReaderRef.current = zipReader
 
                 const entries = await zipReader.getEntries()
+                if (!active) return
+
                 const imageEntries = entries
                     .filter(e => !e.directory && isImageFile(e.filename))
                     .sort((a, b) => naturalSort(a.filename, b.filename))
 
-                if (imageEntries.length === 0) throw new Error('未找到图片')
+                if (imageEntries.length === 0) throw new Error('未找到图片文件')
 
                 setImages(
                     imageEntries.map(entry => ({
@@ -182,8 +230,9 @@ const Linkcccp_CBZPreview: React.FC<{
                 )
                 setIsLoading(false)
             } catch (err: any) {
+                if (!active) return
                 console.error('CBZ Init Error:', err)
-                setError(err.message || '索引失败')
+                setError(err.message || '初始化失败')
                 setIsLoading(false)
             }
         }
@@ -191,8 +240,13 @@ const Linkcccp_CBZPreview: React.FC<{
         initZip()
 
         return () => {
+            active = false
             if (zipReaderRef.current) zipReaderRef.current.close()
-            images.forEach(img => img.url && URL.revokeObjectURL(img.url))
+            // 清理所有产生的 blob
+            setImages(prev => {
+                prev.forEach(img => img.url && URL.revokeObjectURL(img.url))
+                return []
+            })
         }
     }, [asPath])
 
@@ -209,40 +263,51 @@ const Linkcccp_CBZPreview: React.FC<{
                     }
                 })
             },
-            { root: containerRef.current, rootMargin: '1200px 0px' }
+            {
+                root: containerRef.current,
+                // 缩小预加载范围，避免同时发起过多 Range 请求导致网盘限速
+                rootMargin: '600px 0px',
+            }
         )
 
         imageRefsRef.current.forEach(el => el && observer.observe(el))
         return () => observer.disconnect()
     }, [isLoading, images.length, loadPageImage])
 
+    // 滚动同步与进度记忆
     useEffect(() => {
         const container = containerRef.current
         if (!container || images.length === 0) return
 
         const handleScroll = () => {
             saveProgress(container.scrollTop)
-            if (!isUserDragging) {
-                const scrollHeight = container.scrollHeight - container.clientHeight
-                const ratio = scrollHeight > 0 ? container.scrollTop / scrollHeight : 0
-                const index = Math.min(Math.floor(ratio * images.length), images.length - 1)
-                if (index !== currentPageIndex) {
-                    setCurrentPageIndex(index)
-                    cleanupOffscreenImages(index)
-                }
+
+            const scrollHeight = container.scrollHeight - container.clientHeight
+            const ratio = scrollHeight > 0 ? container.scrollTop / scrollHeight : 0
+            const index = Math.min(Math.floor(ratio * images.length), images.length - 1)
+
+            if (index !== currentPageIndex) {
+                setCurrentPageIndex(index)
+                cleanupOffscreenImages(index)
             }
         }
-        container.addEventListener('scroll', handleScroll)
+        container.addEventListener('scroll', handleScroll, { passive: true })
         return () => container.removeEventListener('scroll', handleScroll)
-    }, [images, isUserDragging, currentPageIndex, cleanupOffscreenImages, saveProgress])
+    }, [images.length, isUserDragging, currentPageIndex, cleanupOffscreenImages, saveProgress])
 
     // 恢复进度
     useEffect(() => {
         if (!isLoading && images.length > 0 && containerRef.current) {
             const pos = loadProgress()
-            if (pos > 0) setTimeout(() => containerRef.current?.scrollTo({ top: pos }), 300)
+            if (pos > 0) {
+                setTimeout(() => {
+                    if (containerRef.current) {
+                        containerRef.current.scrollTop = pos
+                    }
+                }, 300)
+            }
         }
-    }, [isLoading, loadProgress, images.length])
+    }, [isLoading, images.length, loadProgress])
 
     const toggleFullscreen = () => {
         if (!isFullscreen) containerRef.current?.requestFullscreen?.()
@@ -258,7 +323,8 @@ const Linkcccp_CBZPreview: React.FC<{
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = parseInt(e.target.value)
         setCurrentPageIndex(val)
-        const target = imageRefsRef.current[val]
+        cleanupOffscreenImages(val) // 联动清理内存
+        const target = imageRefsRef.current.get(val)
         if (target && containerRef.current) {
             target.scrollIntoView({ behavior: 'auto', block: 'start' })
             loadPageImage(val)
@@ -270,7 +336,7 @@ const Linkcccp_CBZPreview: React.FC<{
             <PreviewContainer>
                 <div className="flex flex-col items-center justify-center p-20 text-gray-500">
                     <FontAwesomeIcon icon={faSpinner} spin className="mb-4 text-3xl text-blue-500" />
-                    <p className="font-bold">秒开技术优化中...</p>
+                    <p className="font-bold">深度加速：正在并发读取 Zip 索引...</p>
                 </div>
             </PreviewContainer>
         )
@@ -317,25 +383,19 @@ const Linkcccp_CBZPreview: React.FC<{
                     {images.map((img, idx) => (
                         <div
                             key={img.name}
-                            data-index={idx}
                             ref={el => {
-                                imageRefsRef.current[idx] = el
+                                if (el) imageRefsRef.current.set(idx, el)
+                                else imageRefsRef.current.delete(idx)
                             }}
-                            className="relative flex min-h-[500px] w-full flex-col items-center justify-center"
+                            className="w-full max-w-4xl"
                         >
-                            {img.url ? (
-                                <img src={img.url} alt={`Page ${idx + 1}`} className="h-auto max-w-full" />
-                            ) : (
-                                <div className="flex flex-col items-center py-40 text-gray-400">
-                                    <FontAwesomeIcon icon={faSpinner} spin className="mb-2 opacity-50" />
-                                    <span className="text-xs opacity-40">Loading {idx + 1}...</span>
-                                </div>
-                            )}
+                            <Linkcccp_ImageItem img={img} index={idx} />
                         </div>
                     ))}
                 </div>
 
-                {isFullscreen && (
+                {/* 悬浮进度条 (仅全屏或特殊模式展示) */}
+                {(isFullscreen || images.length > 50) && (
                     <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center gap-4 bg-black/70 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-md">
                         <input
                             type="range"
@@ -347,7 +407,7 @@ const Linkcccp_CBZPreview: React.FC<{
                             onChange={handleSliderChange}
                             className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-gray-600 accent-white"
                         />
-                        <div className="rounded-full border border-white/20 bg-white px-4 py-1.5 text-sm font-bold text-black shadow-xl">
+                        <div className="rounded-full border border-white/20 bg-white px-4 py-1.5 text-sm font-bold text-black shadow-xl min-w-[80px] text-center">
                             {currentPageIndex + 1} / {images.length}
                         </div>
                     </div>
