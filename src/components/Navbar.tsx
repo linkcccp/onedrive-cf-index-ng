@@ -55,15 +55,23 @@ const Navbar = () => {
   }
 
   const generateIndex = async () => {
+    // [安全增强] 要求输入管理密码
+    const accessKey = window.prompt('🔐 Please enter the admin access key to generate index:')
+    if (!accessKey) return
+
     setIsGeneratingIndex(true)
     try {
-      const response = await fetch('/api/Linkcccp_generateIndex')
+      const response = await fetch('/api/Linkcccp_generateIndex', {
+        headers: {
+          'x-linkcccp-access-key': accessKey
+        }
+      })
       const data = await response.json()
 
       if (response.ok) {
         toast.success('Index generated successfully! 📚')
       } else {
-        toast.error(`Failed to generate index: ${data.error}`)
+        toast.error(`Failed: ${data.error}`)
       }
     } catch (error) {
       toast.error('Error generating index')

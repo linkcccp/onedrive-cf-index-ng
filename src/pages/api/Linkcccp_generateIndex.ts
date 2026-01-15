@@ -69,17 +69,19 @@ async function fetchAllItems(
                 for (const item of folderData.value) {
                     try {
                         // 使用 item.name 作为文件名（OneDrive API 已处理转义）
-                        const itemPath = pathPosix.join(currentPath, item.name)
+                        const itemRelativePath = pathPosix.join(currentPath, item.name)
+                        // 计算完整的 OneDrive 路径用于下一次递归
+                        const itemOneDrivePath = pathPosix.join(oneDrivePath, item.name)
 
                         const node: IndexNode = {
                             name: item.name,
-                            path: itemPath,
+                            path: itemRelativePath,
                             isFolder: 'folder' in item,
                         }
 
                         // 如果是文件夹，递归获取子项
                         if ('folder' in item) {
-                            node.children = await fetchAllItems(accessToken, itemPath, itemPath)
+                            node.children = await fetchAllItems(accessToken, itemRelativePath, itemOneDrivePath)
                         }
 
                         items.push(node)
@@ -262,7 +264,9 @@ function generateIndexContent(items: IndexNode[], generatedTime: string): string
  */
 async function uploadIndexFile(accessToken: string, content: string): Promise<void> {
     const indexFileName = 'index.md'
-    const uploadUrl = `${apiConfig.driveApi}/root/${indexFileName}:/content`
+    // 修复上传 URL 格式：必须使用 :/ 分隔符来指定路径
+    // 如果 apiConfig.driveApi 类似于 .../drive，则路径应为 .../drive/root:/index.md:/content
+    const uploadUrl = `${apiConfig.driveApi}/root:/${indexFileName}:/content`
     const maxRetries = 3
     let lastError: any
     let lastResponse: any
@@ -272,27 +276,50 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
             console.log(`[Upload Attempt ${attempt}/${maxRetries}] Uploading index.md to: ${uploadUrl}`)
             console.log(`[Upload Attempt ${attempt}/${maxRetries}] Content size: ${new TextEncoder().encode(content).length} bytes`)
 
-            await axios.put(uploadUrl, content, {
+            const resp = await fetch(uploadUrl, {
+                method: 'PUT',
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
                     'Content-Type': 'text/markdown; charset=utf-8',
                 },
+                body: content,
             })
+
+            const respText = await resp.text()
+            let respData: any = undefined
+            try {
+                respData = respText ? JSON.parse(respText) : undefined
+            } catch (e) {
+                respData = respText
+            }
+
+            if (!resp.ok) {
+                lastResponse = {
+                    status: resp.status,
+                    statusText: resp.statusText,
+                    headers: Object.fromEntries(resp.headers.entries()),
+                    data: respData,
+                }
+
+                const serverMessage = respData?.error?.message || respData?.message || String(respData)
+                throw new Error(`OneDrive upload failed: ${resp.status} ${resp.statusText} - ${serverMessage}`)
+            }
+
             console.log(`✅ Successfully uploaded index.md to OneDrive root (attempt ${attempt})`)
             return
         } catch (error: any) {
             lastError = error
-            lastResponse = error?.response
+            // 如果 lastResponse 已在非 2xx 情况下设置，则保留；否则尝试从 error.response 取值（兼容 axios 风格）
+            lastResponse = lastResponse ?? error?.response ?? null
 
-            const status = error?.response?.status
-            const statusText = error?.response?.statusText
-            const errorData = error?.response?.data
+            const status = lastResponse?.status ?? error?.status
+            const statusText = lastResponse?.statusText ?? error?.statusText
+            const errorData = lastResponse?.data ?? error?.response?.data
 
-            // 详细的错误信息提取
             const errorMsg =
                 errorData?.error?.message ||
                 errorData?.message ||
-                errorData?.['odata.error']?.message ||
+                errorData ||
                 statusText ||
                 error?.message ||
                 'Unknown error'
@@ -306,21 +333,16 @@ async function uploadIndexFile(accessToken: string, content: string): Promise<vo
             })
 
             if (status === 429 || status === 503) {
-                // 速率限制或服务不可用，重试
                 if (attempt < maxRetries) {
-                    const waitTime = 1000 * Math.pow(2, attempt - 1) // 指数退避: 1s, 2s, 4s
-                    console.warn(
-                        `⚠️ ${status} - Retrying in ${waitTime}ms...`
-                    )
+                    const waitTime = 1000 * Math.pow(2, attempt - 1)
+                    console.warn(`⚠️ ${status} - Retrying in ${waitTime}ms...`)
                     await new Promise(resolve => setTimeout(resolve, waitTime))
                     continue
                 }
             } else if (status === 401 || status === 403) {
-                // 认证失败，不应重试
                 throw new Error(`Authentication failed (${status}): ${errorMsg}`)
             }
 
-            // 其他错误，尝试重试
             if (attempt < maxRetries) {
                 const waitTime = 1000 * Math.pow(2, attempt - 1)
                 console.warn(`⚠️ Retrying in ${waitTime}ms...`)
@@ -377,11 +399,37 @@ export default async function handler(req: NextRequest): Promise<Response> {
     try {
         console.log('🚀 Starting index generation...')
 
+
+        // 权限检查：确保只有管理员可以触发
+        // 如果你在 site.config.js 中配置了 protectedRoutes，我们可以在这里添加检查
+        // 或者使用更简单的保护：需要在 headers 中提供特殊的 Secret Key
+        // 为了简单且安全，我们检查请求是否包含有效的 API Key（如果配置了 CLOUDFLARE_API_KEY）
+        // 或者简单地检查是否为本地开发环境
+
+        // [安全增强] 检查管理访问密钥
+        // 你需要在 Cloudflare Pages 的设置 -> Environment Variables 中添加变量：
+        // LINKCCCP_ACCESS_KEY = 你的密码
+        // 如果未设置环境变量，默认密码为 '123456' (强烈建议修改)
+        const serverAccessKey = process.env.LINKCCCP_ACCESS_KEY || '123456'
+        const clientAccessKey = req.headers.get('x-linkcccp-access-key')
+
+        if (clientAccessKey !== serverAccessKey) {
+            return new Response(JSON.stringify({ error: 'Invalid access key' }), { status: 403 })
+        }
+
         // 获取 access token
         const accessToken = await getAccessToken()
 
+        // 如果无法获取 token（未认证），则拒绝
         if (!accessToken) {
-            return new Response(JSON.stringify({ error: 'No access token available' }), { status: 403 })
+            return new Response(JSON.stringify({ error: 'No access token available - Unauthorized' }), { status: 401 })
+        }
+
+        // [安全增强] 添加一个简单的 Referer 检查，确保请求来自本站点
+        const referer = req.headers.get('referer')
+        const host = req.headers.get('host')
+        if (process.env.NODE_ENV === 'production' && referer && host && !referer.includes(host)) {
+            return new Response(JSON.stringify({ error: 'Unauthorized source' }), { status: 403 })
         }
 
         // 获取基目录的编码路径
