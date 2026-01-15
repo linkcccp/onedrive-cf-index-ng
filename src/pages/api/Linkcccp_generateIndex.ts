@@ -125,15 +125,13 @@ async function fetchAllItems(
                 return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
             }
         })
-    })
 
-    return items
-} catch (error: any) {
-    console.error(`Error fetching items from ${currentPath}:`, error?.message ?? error)
-    return []
+        return items
+    } catch (error: any) {
+        console.error(`Error fetching items from ${currentPath}:`, error?.message ?? error)
+        return []
+    }
 }
-}
-
 /**
  * 对文件名进行 Markdown 安全转义
  * 防止特殊符号（如 #, %, &, *, [, ], (, ), !, |）破坏 Markdown 语法
