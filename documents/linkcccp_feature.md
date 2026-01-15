@@ -74,13 +74,13 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 | 导航栏链接 | site.config.js 中的 `links` | 添加/修改导航栏外部链接 |
 | 布局组件样式 | FolderGridLayout.tsx, FolderListLayout.tsx | 修改文件列表的展示样式 |
 
-### 3.2 修改下载逻辑
+### 3.2 修改下载与缓存优化 (Linkcccp_Optimization)
 
 | 修改目标 | 文件位置 | 说明 |
 |---------|---------|------|
 | 下载按钮组 | DownloadBtnGtoup.tsx | 修改下载按钮的样式和行为 |
 | 多文件下载 | MultiFileDownloader.tsx | 修改批量下载的 ZIP 打包逻辑 |
-| 原始文件 API | raw.ts | 修改原始文件的获取和重定向逻辑 |
+| 原始文件 API | raw.ts | **智能分流**：90MB 以下走 Cloudflare 代理+CDN 缓存；以上直连 OneDrive |
 | 下载链接格式 | CustomEmbedLinkMenu.tsx | 自定义直链的生成规则 |
 
 ### 3.3 调整 API 配置
@@ -89,7 +89,7 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 |---------|---------|------|
 | OAuth 凭证 | api.config.js 中的 `clientId`, `obfuscatedClientSecret` | 使用自己的 Azure AD 应用凭证 |
 | API 端点 | api.config.js 中的 `authApi`, `driveApi` | 世纪互联用户需要修改 |
-| 缓存策略 | api.config.js 中的 `cacheControlHeader` | 调整边缘缓存时间 |
+| 缓存策略 | api.config.js 中的 `cacheControlHeader` | **异步刷新**：配置 `stale-while-revalidate` 兼顾速度与新鲜度 |
 | 共享目录 | site.config.js 中的 `baseDirectory` | 设置要公开的 OneDrive 文件夹 |
 | 分页数量 | site.config.js 中的 `maxItems` | 每页显示的最大项目数（上限 200） |
 | 受保护路由 | site.config.js 中的 `protectedRoutes` | 添加需要密码保护的文件夹路径 |
@@ -206,4 +206,31 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 
 ---
 
-## 7. 常见问题排查 (待补充)
+## 7. CDN 性能加速与全自动缓存策略 (Linkcccp_CDN_Optimization)
+
+### 🎯 方案概述
+为了应对高并发访问（如多人同时查看 CBZ 漫画）并防止 OneDrive API 限速，本项目实施了基于 Cloudflare Workers 的智能代理与缓存方案。
+
+### ⚙️ 技术实现
+
+#### ① 智能分流 (Smart Routing)
+- **文件限制处理**：由于 Cloudflare Workers 免费版对单个响应大小及处理时间有限制（约 100MB），逻辑设定为：
+  - **大小 < 90MB**：通过 Worker 代理。
+  - **大小 > 90MB**：直接 302 重定向至 OneDrive 官方下载链接。
+- **Range 穿透**：代理逻辑完美转发 `Range` 请求头，确保 CBZ 预览器能实现“按需取图”，无需下载整个压缩包。
+
+#### ② 异步刷新缓存 (Stale-While-Revalidate)
+- **配置参数**：`max-age=0, s-maxage=60, stale-while-revalidate=604800`
+- **逻辑模型**：
+  - **1秒内**：直接由 CDN 命中。
+  - **1分钟后**：首个访问者触发后台更新检测，但依然先看到旧缓存（极速响应）。
+  - **7天内**：如果没有更新，缓存将一直保持有效。
+- **优势**：内容更新后（如 OneDrive 换图）最快 60 秒内开始自动同步，且完全不占用网盘查询次数。
+
+### 📝 维护重点
+- 修改 `config/api.config.js` 即可调整全局缓存强度。
+- 修改 `src/pages/api/raw.ts` 即可调整“走 CDN”与“走直连”的阈值（当前为 90MB）。
+
+---
+
+## 8. 常见问题排查 (待补充)

@@ -67,6 +67,11 @@ const Linkcccp_CBZPreview: React.FC<{
     const zipReaderRef = useRef<any>(null)
     const imageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map())
 
+    // --- 并发控制与队列 ---
+    const loadingQueueRef = useRef<Set<number>>(new Set())
+    const activeExtractionsRef = useRef<number>(0)
+    const MAX_CONCURRENT = 3 // 适当增加并发，平衡速度与稳定性
+
     const [currentPageIndex, setCurrentPageIndex] = useState(0)
     const [isUserDragging, setIsUserDragging] = useState(false)
 
@@ -107,47 +112,81 @@ const Linkcccp_CBZPreview: React.FC<{
     }, [file.id, file.name])
 
     // --- 加载单页图片逻辑 ---
-    const loadPageImage = useCallback(async (index: number) => {
+    const processQueue = useCallback(async () => {
+        if (activeExtractionsRef.current >= MAX_CONCURRENT || loadingQueueRef.current.size === 0) return
+
+        // 获取队列中离当前位置最近的任务
+        const pendingIndices = Array.from(loadingQueueRef.current).sort((a, b) => {
+            return Math.abs(a - currentPageIndex) - Math.abs(b - currentPageIndex)
+        })
+
+        const index = pendingIndices[0]
+        loadingQueueRef.current.delete(index)
+        activeExtractionsRef.current++
+
+        try {
+            const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
+            zipModuleRef.current = zip
+
+            setImages(prev => {
+                const img = prev[index]
+                if (!img || img.url || img.loading) {
+                    activeExtractionsRef.current--
+                    processQueue()
+                    return prev
+                }
+
+                const performExtraction = async () => {
+                    try {
+                        const entry = img.entry
+                        // 使用 BlobWriter，并尝试禁用校验以提速
+                        const blob = await entry.getData(new zip.BlobWriter(), { checkSignature: false })
+                        const url = URL.createObjectURL(blob)
+
+                        setImages(latest => {
+                            const updated = [...latest]
+                            if (updated[index]) {
+                                updated[index] = { ...updated[index], url, loading: false, error: false }
+                            }
+                            return updated
+                        })
+                    } catch (err) {
+                        console.error(`Page ${index} extraction error:`, err)
+                        setImages(latest => {
+                            const updated = [...latest]
+                            if (updated[index]) {
+                                updated[index] = { ...updated[index], loading: false, error: true }
+                            }
+                            return updated
+                        })
+                    } finally {
+                        activeExtractionsRef.current--
+                        processQueue()
+                    }
+                }
+
+                performExtraction()
+                const updated = [...prev]
+                updated[index] = { ...updated[index], loading: true }
+                return updated
+            })
+        } catch (err) {
+            activeExtractionsRef.current--
+            processQueue()
+        }
+    }, [currentPageIndex])
+
+    const loadPageImage = useCallback((index: number) => {
         setImages(prev => {
             const img = prev[index]
-            if (!img || img.url || img.loading) return prev
-
-            // 异步执行提取
-            const performExtraction = async () => {
-                try {
-                    const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
-                    zipModuleRef.current = zip
-
-                    const entry = img.entry
-                    const blob = await entry.getData(new zip.BlobWriter())
-                    const url = URL.createObjectURL(blob)
-
-                    setImages(latest => {
-                        const updated = [...latest]
-                        if (updated[index]) {
-                            updated[index] = { ...updated[index], url, loading: false, error: false }
-                        }
-                        return updated
-                    })
-                } catch (err) {
-                    console.error(`Page ${index} extraction error:`, err)
-                    setImages(latest => {
-                        const updated = [...latest]
-                        if (updated[index]) {
-                            updated[index] = { ...updated[index], loading: false, error: true }
-                        }
-                        return updated
-                    })
-                }
+            if (img && !img.url && !img.loading && !loadingQueueRef.current.has(index)) {
+                loadingQueueRef.current.add(index)
+                // 异步启动处理流程
+                setTimeout(processQueue, 0)
             }
-
-            performExtraction()
-
-            const updated = [...prev]
-            updated[index] = { ...updated[index], loading: true }
-            return updated
+            return prev
         })
-    }, [])
+    }, [processQueue])
 
     // --- 内存清理逻辑 ---
     const cleanupOffscreenImages = useCallback((currentIndex: number) => {
@@ -265,8 +304,8 @@ const Linkcccp_CBZPreview: React.FC<{
             },
             {
                 root: containerRef.current,
-                // 缩小预加载范围，避免同时发起过多 Range 请求导致网盘限速
-                rootMargin: '600px 0px',
+                // 适当扩大预加载范围，配合并发控制队列，可以更平滑地后台加载
+                rootMargin: '1200px 0px',
             }
         )
 
