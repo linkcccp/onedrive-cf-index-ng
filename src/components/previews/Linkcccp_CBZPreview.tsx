@@ -52,11 +52,50 @@ const Linkcccp_ImageItem = memo(({ img, index }: { img: Linkcccp_CBZImage; index
 })
 Linkcccp_ImageItem.displayName = 'Linkcccp_ImageItem'
 
+// --- 数据库缓存逻辑 ---
+const DB_NAME = 'Linkcccp_CBZ_Cache'
+const STORE_NAME = 'files'
+
+const Linkcccp_getDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1)
+        request.onupgradeneeded = () => {
+            const db = request.result
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'id' })
+            }
+        }
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+    })
+}
+
+const Linkcccp_saveToCache = async (id: string, blob: Blob, lastModified: string) => {
+    try {
+        const db = await Linkcccp_getDB()
+        const tx = db.transaction(STORE_NAME, 'readwrite')
+        tx.objectStore(STORE_NAME).put({ id, blob, lastModified, timestamp: Date.now() })
+    } catch (e) { console.error('Cache save failed', e) }
+}
+
+const Linkcccp_getFromCache = async (id: string): Promise<{ blob: Blob, lastModified: string } | null> => {
+    try {
+        const db = await Linkcccp_getDB()
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readonly')
+            const request = tx.objectStore(STORE_NAME).get(id)
+            request.onsuccess = () => resolve(request.result || null)
+            request.onerror = () => resolve(null)
+        })
+    } catch (e) { return null }
+}
+
 const Linkcccp_CBZPreview: React.FC<{
     file: OdFileObject
 }> = ({ file }) => {
     const { asPath } = useRouter()
     const [isLoading, setIsLoading] = useState(true)
+    const [downloadProgress, setDownloadProgress] = useState(0) // 下载进度 0-100
     const [error, setError] = useState<string>('')
     const [images, setImages] = useState<Linkcccp_CBZImage[]>([])
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -66,11 +105,6 @@ const Linkcccp_CBZPreview: React.FC<{
     const zipModuleRef = useRef<any>(null)
     const zipReaderRef = useRef<any>(null)
     const imageRefsRef = useRef<Map<number, HTMLDivElement>>(new Map())
-
-    // --- 并发控制与队列 ---
-    const loadingQueueRef = useRef<Set<number>>(new Set())
-    const activeExtractionsRef = useRef<number>(0)
-    const MAX_CONCURRENT = 3 // 适当增加并发，平衡速度与稳定性
 
     const [currentPageIndex, setCurrentPageIndex] = useState(0)
     const [isUserDragging, setIsUserDragging] = useState(false)
@@ -111,102 +145,51 @@ const Linkcccp_CBZPreview: React.FC<{
         }
     }, [file.id, file.name])
 
-    // --- 加载单页图片逻辑 ---
-    const processQueue = useCallback(async () => {
-        if (activeExtractionsRef.current >= MAX_CONCURRENT || loadingQueueRef.current.size === 0) return
-
-        // 获取队列中离当前位置最近的任务
-        const pendingIndices = Array.from(loadingQueueRef.current).sort((a, b) => {
-            return Math.abs(a - currentPageIndex) - Math.abs(b - currentPageIndex)
-        })
-
-        const index = pendingIndices[0]
-        loadingQueueRef.current.delete(index)
-        activeExtractionsRef.current++
-
-        try {
-            const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
-            zipModuleRef.current = zip
-
-            setImages(prev => {
-                const img = prev[index]
-                if (!img || img.url || img.loading) {
-                    activeExtractionsRef.current--
-                    processQueue()
-                    return prev
-                }
-
-                const performExtraction = async () => {
-                    try {
-                        const entry = img.entry
-                        // 使用 BlobWriter，并尝试禁用校验以提速
-                        const blob = await entry.getData(new zip.BlobWriter(), { checkSignature: false })
-                        const url = URL.createObjectURL(blob)
-
-                        setImages(latest => {
-                            const updated = [...latest]
-                            if (updated[index]) {
-                                updated[index] = { ...updated[index], url, loading: false, error: false }
-                            }
-                            return updated
-                        })
-                    } catch (err) {
-                        console.error(`Page ${index} extraction error:`, err)
-                        setImages(latest => {
-                            const updated = [...latest]
-                            if (updated[index]) {
-                                updated[index] = { ...updated[index], loading: false, error: true }
-                            }
-                            return updated
-                        })
-                    } finally {
-                        activeExtractionsRef.current--
-                        processQueue()
-                    }
-                }
-
-                performExtraction()
-                const updated = [...prev]
-                updated[index] = { ...updated[index], loading: true }
-                return updated
-            })
-        } catch (err) {
-            activeExtractionsRef.current--
-            processQueue()
-        }
-    }, [currentPageIndex])
-
-    const loadPageImage = useCallback((index: number) => {
+    // --- 加载单页图片逻辑 (现在直接从内存解压，极快) ---
+    const loadPageImage = useCallback(async (index: number) => {
         setImages(prev => {
             const img = prev[index]
-            if (img && !img.url && !img.loading && !loadingQueueRef.current.has(index)) {
-                loadingQueueRef.current.add(index)
-                // 异步启动处理流程
-                setTimeout(processQueue, 0)
-            }
-            return prev
-        })
-    }, [processQueue])
+            if (!img || img.url || img.loading) return prev
 
-    // --- 内存清理逻辑 ---
-    const cleanupOffscreenImages = useCallback((currentIndex: number) => {
-        setImages(prev => {
-            let changed = false
-            const newImages = prev.map((img, idx) => {
-                const distance = Math.abs(idx - currentIndex)
-                // 保留当前位置前后 15 页，其余释放内存
-                if (img.url && distance > 15) {
-                    URL.revokeObjectURL(img.url)
-                    changed = true
-                    return { ...img, url: undefined, loading: false }
+            const performExtraction = async () => {
+                try {
+                    const zip = zipModuleRef.current
+                    const blob = await img.entry.getData(new zip.BlobWriter(), { checkSignature: false })
+                    const url = URL.createObjectURL(blob)
+
+                    setImages(latest => {
+                        const updated = [...latest]
+                        if (updated[index]) {
+                            updated[index] = { ...updated[index], url, loading: false, error: false }
+                        }
+                        return updated
+                    })
+                } catch (err) {
+                    console.error(`Page ${index} extraction error:`, err)
+                    setImages(latest => {
+                        const updated = [...latest]
+                        if (updated[index]) {
+                            updated[index] = { ...updated[index], loading: false, error: true }
+                        }
+                        return updated
+                    })
                 }
-                return img
-            })
-            return changed ? newImages : prev
+            }
+
+            performExtraction()
+            const updated = [...prev]
+            updated[index] = { ...updated[index], loading: true }
+            return updated
         })
     }, [])
 
-    // --- 初始化 Zip 资源 ---
+    // --- 内存清理逻辑 (已根据用户需求放松限制：不再主动销毁已加载的图片，除非内存极度紧张) ---
+    const cleanupOffscreenImages = useCallback((currentIndex: number) => {
+        // 用户要求“不清理内容”以便前后查看。
+        // 我们不再执行 URL.revokeObjectURL，让图片留在内存中实现瞬间翻页。
+    }, [])
+
+    // --- 初始化 Zip 资源 (带本地持久化缓存，不重复执行下载) ---
     useEffect(() => {
         let active = true
 
@@ -214,40 +197,61 @@ const Linkcccp_CBZPreview: React.FC<{
             try {
                 setIsLoading(true)
                 setError('')
+                setDownloadProgress(0)
 
-                // 动态加载 zip.js
-                const zip = await import('@zip.js/zip.js')
-                if (!active) return
+                const fileKey = file.id || asPath
+                const cached = await Linkcccp_getFromCache(fileKey)
+                let fullBlob: Blob
+
+                if (cached && cached.lastModified === file.lastModifiedDateTime) {
+                    // 命中本地缓存：直接使用已有的 Blob，不消耗任何流量
+                    fullBlob = cached.blob
+                    setDownloadProgress(100)
+                } else {
+                    // 没中缓存：执行整包下载
+                    const zip = await import('@zip.js/zip.js')
+                    if (!active) return
+                    zipModuleRef.current = zip
+                    zip.configure({ useWebWorkers: true })
+
+                    const hashedToken = getStoredToken(asPath)
+                    const requestUrl = `/api/raw?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+                    const prefetch = await fetch(requestUrl, { method: 'GET', headers: { Range: 'bytes=0-0' } })
+                    if (!prefetch.ok && prefetch.status !== 206) throw new Error(`无法连接网盘: ${prefetch.status}`)
+                    const directUrl = prefetch.url
+
+                    const response = await fetch(directUrl)
+                    if (!response.ok) throw new Error('文件下载失败')
+
+                    const contentLength = response.headers.get('content-length')
+                    const total = contentLength ? parseInt(contentLength, 10) : 0
+                    let loaded = 0
+
+                    const reader = response.body!.getReader()
+                    const chunks: Uint8Array[] = []
+
+                    while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) break
+                        if (value) {
+                            chunks.push(value)
+                            loaded += value.length
+                            if (total > 0) {
+                                setDownloadProgress(Math.round((loaded / total) * 100))
+                            }
+                        }
+                    }
+
+                    if (!active) return
+                    fullBlob = new Blob(chunks as BlobPart[])
+                    // 保存到本地持久化存储 (IndexedDB)
+                    await Linkcccp_saveToCache(fileKey, fullBlob, file.lastModifiedDateTime || '')
+                }
+
+                // 从 Blob 构建 ZipReader
+                const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
                 zipModuleRef.current = zip
-                zip.configure({ useWebWorkers: true })
-
-                const hashedToken = getStoredToken(asPath)
-                const requestUrl = `/api/raw?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
-
-                // 探测直链并获取核心参数：最终 URL 和文件总大小
-                const prefetch = await fetch(requestUrl, {
-                    method: 'GET',
-                    headers: { Range: 'bytes=0-0' },
-                })
-
-                if (!prefetch.ok && prefetch.status !== 206) {
-                    throw new Error(`无法连接网盘: ${prefetch.status}`)
-                }
-
-                const directUrl = prefetch.url
-                const rangeHeader = prefetch.headers.get('Content-Range')
-                // 获取精确大小，让 zip.js 能瞬间定位中央目录
-                const totalSize = rangeHeader ? parseInt(rangeHeader.split('/')[1]) : undefined
-
-                const reader = new zip.HttpReader(directUrl, {
-                    useRangeHeader: true,
-                    preventHeadRequest: true,
-                })
-                if (totalSize) {
-                    reader.size = totalSize
-                }
-
-                const zipReader = new zip.ZipReader(reader, { checkSignature: false })
+                const zipReader = new zip.ZipReader(new zip.BlobReader(fullBlob))
                 zipReaderRef.current = zipReader
 
                 const entries = await zipReader.getEntries()
@@ -259,19 +263,18 @@ const Linkcccp_CBZPreview: React.FC<{
 
                 if (imageEntries.length === 0) throw new Error('未找到图片文件')
 
-                setImages(
-                    imageEntries.map(entry => ({
-                        name: entry.filename,
-                        entry: entry,
-                        loading: false,
-                        error: false,
-                    }))
-                )
+                setImages(imageEntries.map(entry => ({
+                    name: entry.filename,
+                    entry: entry,
+                    loading: false,
+                    error: false,
+                })))
+
                 setIsLoading(false)
             } catch (err: any) {
                 if (!active) return
-                console.error('CBZ Init Error:', err)
-                setError(err.message || '初始化失败')
+                console.error('CBZ Persistent Load Error:', err)
+                setError(err.message || '加载失败')
                 setIsLoading(false)
             }
         }
@@ -281,7 +284,6 @@ const Linkcccp_CBZPreview: React.FC<{
         return () => {
             active = false
             if (zipReaderRef.current) zipReaderRef.current.close()
-            // 清理所有产生的 blob
             setImages(prev => {
                 prev.forEach(img => img.url && URL.revokeObjectURL(img.url))
                 return []
@@ -375,7 +377,15 @@ const Linkcccp_CBZPreview: React.FC<{
             <PreviewContainer>
                 <div className="flex flex-col items-center justify-center p-20 text-gray-500">
                     <FontAwesomeIcon icon={faSpinner} spin className="mb-4 text-3xl text-blue-500" />
-                    <p className="font-bold">深度加速：正在并发读取 Zip 索引...</p>
+                    <p className="mb-2 font-bold text-lg">极致流畅模式：正在预载整包资源...</p>
+                    <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+                        <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${downloadProgress}%` }}
+                        ></div>
+                    </div>
+                    <p className="mt-2 text-sm opacity-60">已缓冲 {downloadProgress}%</p>
+                    <p className="mt-6 text-xs text-gray-400">下载完成后，翻页将如丝般顺滑</p>
                 </div>
             </PreviewContainer>
         )
