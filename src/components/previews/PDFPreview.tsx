@@ -1,23 +1,73 @@
 import { useRouter } from 'next/router'
+import { useState, useEffect } from 'react'
 import { getBaseUrl } from '../../utils/getBaseUrl'
 import { getStoredToken } from '../../utils/protectedRouteHandler'
 import DownloadButtonGroup from '../DownloadBtnGtoup'
 import { DownloadBtnContainer } from './Containers'
+import Loading from '../Loading'
+import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_indexedDB'
 
 const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
   const { asPath } = useRouter()
   const hashedToken = getStoredToken(asPath)
 
+  const [loading, setLoading] = useState(true)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const loadFile = async () => {
+      try {
+        setLoading(true)
+        const fileKey = file.id || asPath
+        const downloadUrl = `/api/raw?path=${asPath}${hashedToken ? '&odpt=' + hashedToken : ''}`
+
+        const blob = await Linkcccp_downloadAndCache(
+          fileKey,
+          file.lastModifiedDateTime,
+          downloadUrl,
+          (progress) => active && setDownloadProgress(progress)
+        )
+
+        if (active) {
+          setBlobUrl(URL.createObjectURL(blob))
+          setLoading(false)
+        }
+      } catch (e) {
+        console.error('PDF Load Error', e)
+        if (active) setLoading(false)
+      }
+    }
+    loadFile()
+    return () => {
+      active = false
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    }
+  }, [asPath, file.id, file.lastModifiedDateTime])
+
+  // 原有逻辑作为 fallback 或者不用
+  /*
   const pdfPath = encodeURIComponent(
     `${getBaseUrl()}/api/raw?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
   )
   const url = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${pdfPath}`
+  */
+
+  if (loading) {
+    return (
+      <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
+        <Loading loadingText={`Downloading PDF ${downloadProgress}% ...`} />
+      </div>
+    )
+  }
 
   return (
     <div>
       <div className="w-full overflow-hidden rounded" style={{ height: '90vh' }}>
-        <iframe src={url} frameBorder="0" width="100%" height="100%"></iframe>
+        <iframe src={blobUrl} frameBorder="0" width="100%" height="100%"></iframe>
       </div>
+
       <DownloadBtnContainer>
         <DownloadButtonGroup />
       </DownloadBtnContainer>

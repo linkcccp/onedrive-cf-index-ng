@@ -161,28 +161,25 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 
 ### 🎯 技术特性
 
-#### ① 秒开级流式加载 (Streaming)
-- **按需提取**：基于 \`@zip.js/zip.js\` 的 \`HttpReader\` 实现，利用 HTTP Range Requests 仅抓取当前查看页面的压缩数据，无需下载整个 CBZ。
-- **直链预取优化**：自动探测 OneDrive 最终直链并获取 \`Content-Length\`，让 Zip 中央目录检索只需一步位移即可完成。
-- **分块解压**：配置 Web Workers 进行后台解压，主线程零负担。
+#### ① 极致流畅持久化模式 (Persistent Caching)
+- **本地零流量重载**：引入 IndexedDB 存储引擎，将整包 CBZ 缓存至浏览器本地。再次访问相同文件时，直接从本地读取，**不消耗网盘流量**。
+- **智能增量更新**：自动校验 \`lastModified\` 时间戳。仅当网盘文件版本更新时才重新触发下载，平衡“新鲜度”与“省流量”。
+- **全量内存加载**：取消了传统的“视口外销毁”逻辑。解压后的图片永久保留在当前会话中，支持前后极速翻转、无任何二次加载。
+- **整流式预载进度条**：通过浏览器流式 API (\`ReadableStream\`) 实时反馈下载百分比，让用户对“先苦后甜”的加载过程心中有数。
 
 #### ② 工业级渲染优化
 - **无缝衔接布局**：图片使用 \`block\` 布局和 \`w-full\` 宽度对齐，完全消除不同长宽比图片间的空隙，实现“长条漫”丝滑体验。
 - **渲染隔离 (Memo)**：封装独立的 \`Linkcccp_ImageItem\` 组件，确保单页加载不会引发整个列表的重绘。
 - **异步解码**：开启 \`decoding="async"\`，彻底消除快速滚动时的白屏块和掉帧。
 
-#### ③ 智能内存与带宽管理
-- **动态清理**：实时监控视口位置，自动销毁当前位置 ±15 页以外的 Blob URL，防止大型漫画占用过多内存导致浏览器崩溃。
-- **带宽竞争控制**：精细调整 \`IntersectionObserver\` 的 \`rootMargin\` (600px)，优先保障核心视口图片的下载优先级。
-
-#### ④ 交互与进度管理
+#### ③ 交互与进度管理
 - **双向联动进度条**：悬浮滑块支持毫秒级跳转，并与页面滚动双向同步。
 - **深度记忆**：自动记忆每个漫画的阅读位置。
 
 ### 🛠️ 核心代码逻辑简述
 
-- **初始化**：通过 \`/api/raw\` 预取 \`Range: bytes=0-0\` 获取直链和文件大小。
-- **加载器**：使用 \`IntersectionObserver\` 监测 \`data-index\` 触发 \`entry.getData()\`。
+- **初始化**：优先检查 IndexedDB。缓存失效则通过 \`/api/raw\` 流式获取全量 Blob 并入库。
+- **解压器**：使用 \`BlobReader\` 挂载本地数据，配合 Web Workers 进行后台解压。
 - **排序**：采用 \`naturalSort\` 处理页码（支持 \`1.jpg\`, \`10.jpg\` 等自然序列）。
 
 ### 📋 维护记录：已修复的坑
@@ -193,6 +190,8 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 | **TS2353 报错** | HttpOptions 不支持 size 属性 | 先实例化 Reader，再手动赋值 \`reader.size = totalSize\` |
 | **内存泄漏** | 大量 Blob URL 堆积导致系统卡顿 | 引入 \`cleanupOffscreenImages\` 机制，强制回收视口外的资源 |
 | **图片空隙** | 默认 Inline 布局导致底部留白 | 设置 \`display: block\` 并取消 \`border\` |
+| **TS2345 报错** | BlobPart[] 类型不匹配 | 在创建 Blob 时使用 \`as BlobPart[]\` 进行强制类型转换 |
+| **流量浪费** | 每次查看都要重新从 OneDrive 下载 | 引入 IndexedDB 实现本地持久化存储，对比 lastModified 决定是否重用缓存 |
 
 ## 6. 文件索引生成功能 (Linkcccp_generateIndex)
 

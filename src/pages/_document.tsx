@@ -8,6 +8,9 @@ class MyDocument extends Document {
         <Head>
           <meta name="description" content="OneDrive Vercel Index" />
           <link rel="icon" href="/favicon.ico" />
+          <link rel="manifest" href="/site.webmanifest" />
+          <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+          <meta name="theme-color" content="#ffffff" />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
           {siteConfig.googleFontLinks.map(link => (
