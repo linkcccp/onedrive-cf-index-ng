@@ -23,13 +23,13 @@ const Linkcccp_ImageItem = memo(({ img, index }: { img: Linkcccp_CBZImage; index
     return (
         <div
             data-index={index}
-            className="relative flex min-h-[500px] w-full flex-col items-center justify-center border-b border-gray-100 dark:border-gray-800 last:border-0"
+            className={`relative w-full overflow-hidden ${!img.url ? 'flex min-h-[500px] items-center justify-center' : ''}`}
         >
             {img.url ? (
                 <img
                     src={img.url}
                     alt={`Page ${index + 1}`}
-                    className="h-auto max-w-full"
+                    className="block h-auto w-full max-w-full"
                     decoding="async"
                 />
             ) : (
