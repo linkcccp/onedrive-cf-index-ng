@@ -29,6 +29,7 @@ const Linkcccp_CBZPreview: React.FC<{
 
     // Refs
     const containerRef = useRef<HTMLDivElement>(null)
+    const zipModuleRef = useRef<any>(null) // 缓存 zip 模块防止重复导入
     const zipReaderRef = useRef<any>(null)
     const imageRefsRef = useRef<(HTMLDivElement | null)[]>([])
 
@@ -40,35 +41,36 @@ const Linkcccp_CBZPreview: React.FC<{
         return a.localeCompare(b, undefined, {
             numeric: true,
             sensitivity: 'base',
-            ignorePunctuation: true
+            ignorePunctuation: true,
         })
     }
 
-    // 检查文件是否为图片
+    // 检查文件是否为图片 (增加对常见漫画格式的支持)
     const isImageFile = (filename: string): boolean => {
-        const imageExtensions = /\.(jpe?g|png|gif|webp|bmp|svg)$/i
+        const imageExtensions = /\.(jpe?g|png|gif|webp|bmp|svg|avif)$/i
         return imageExtensions.test(filename)
     }
 
     // --- 进度记忆逻辑 ---
     const getStorageKey = () => `cbz-progress-${file.id || file['@microsoft.graph.downloadUrl']}`
 
-    const saveProgress = (scrollTop: number) => {
-        try {
-            localStorage.setItem(getStorageKey(), scrollTop.toString())
-        } catch (error) {
-            console.warn('Failed to save CBZ progress:', error)
-        }
-    }
+    const saveProgress = useCallback(
+        (scrollTop: number) => {
+            try {
+                localStorage.setItem(getStorageKey(), scrollTop.toString())
+            } catch (error) { }
+        },
+        [file.id]
+    )
 
-    const loadProgress = (): number => {
+    const loadProgress = useCallback((): number => {
         try {
             const saved = localStorage.getItem(getStorageKey())
             return saved ? parseFloat(saved) : 0
         } catch (error) {
             return 0
         }
-    }
+    }, [file.id])
 
     // --- 加载单页图片逻辑 ---
     const loadPageImage = useCallback(async (index: number) => {
@@ -77,9 +79,12 @@ const Linkcccp_CBZPreview: React.FC<{
                 const nextImages = [...current]
                 nextImages[index] = { ...nextImages[index], loading: true }
 
-                // 异步执行加载，不阻塞状态返回
-                import('@zip.js/zip.js').then(async (zip) => {
+                const processExtraction = async () => {
                     try {
+                        // 确保使用缓存的模块
+                        const zip = zipModuleRef.current || (await import('@zip.js/zip.js'))
+                        zipModuleRef.current = zip
+
                         const entry = nextImages[index].entry
                         const blob = await entry.getData(new zip.BlobWriter())
                         const url = URL.createObjectURL(blob)
@@ -101,7 +106,9 @@ const Linkcccp_CBZPreview: React.FC<{
                             return updated
                         })
                     }
-                })
+                }
+
+                processExtraction()
                 return nextImages
             }
             return current
@@ -113,8 +120,8 @@ const Linkcccp_CBZPreview: React.FC<{
         setImages(prev => {
             let changed = false
             const newImages = prev.map((img, idx) => {
-                // 设置更宽松的缓存范围（前后 15 页），避免频繁重复加载
-                if (img.url && Math.abs(idx - currentIndex) > 15) {
+                const distance = Math.abs(idx - currentIndex)
+                if (img.url && distance > 20) {
                     URL.revokeObjectURL(img.url)
                     changed = true
                     return { ...img, url: undefined, loading: false }
@@ -133,19 +140,29 @@ const Linkcccp_CBZPreview: React.FC<{
                 setError('')
 
                 const zip = await import('@zip.js/zip.js')
+                zipModuleRef.current = zip
+                zip.configure({ useWebWorkers: true })
+
                 const hashedToken = getStoredToken(asPath)
                 const requestUrl = `/api/raw/?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
 
-                // 【核心优化】预取真实直链。Range: bytes=0-0 确保不下载文件内容，只为拿到最终 URL
-                const prefetch = await fetch(requestUrl, { headers: { 'Range': 'bytes=0-0' } })
+                // 探测直链
+                const prefetch = await fetch(requestUrl, {
+                    method: 'GET',
+                    headers: { Range: 'bytes=0-0' },
+                })
+
                 if (!prefetch.ok && prefetch.status !== 206) {
-                    throw new Error(`无法连接网盘: ${prefetch.statusText}`)
+                    throw new Error(`无法连接网盘: ${prefetch.status}`)
                 }
                 const directUrl = prefetch.url
 
-                // 使用直链直接访问微软服务器，极致提升速度
-                const reader = new zip.HttpReader(directUrl, { useRangeHeader: true })
-                const zipReader = new zip.ZipReader(reader)
+                const reader = new zip.HttpReader(directUrl, {
+                    useRangeHeader: true,
+                    preventHeadRequest: true,
+                })
+
+                const zipReader = new zip.ZipReader(reader, { checkSignature: false })
                 zipReaderRef.current = zipReader
 
                 const entries = await zipReader.getEntries()
@@ -153,21 +170,20 @@ const Linkcccp_CBZPreview: React.FC<{
                     .filter(e => !e.directory && isImageFile(e.filename))
                     .sort((a, b) => naturalSort(a.filename, b.filename))
 
-                if (imageEntries.length === 0) {
-                    throw new Error('此压缩包中未找到漫画图片')
-                }
+                if (imageEntries.length === 0) throw new Error('未找到图片')
 
-                setImages(imageEntries.map(entry => ({
-                    name: entry.filename,
-                    entry: entry,
-                    loading: false,
-                    error: false
-                })))
-
+                setImages(
+                    imageEntries.map(entry => ({
+                        name: entry.filename,
+                        entry: entry,
+                        loading: false,
+                        error: false,
+                    }))
+                )
                 setIsLoading(false)
             } catch (err: any) {
                 console.error('CBZ Init Error:', err)
-                setError(err.message || '初始化失败，请检查网络')
+                setError(err.message || '索引失败')
                 setIsLoading(false)
             }
         }
@@ -180,12 +196,12 @@ const Linkcccp_CBZPreview: React.FC<{
         }
     }, [asPath])
 
-    // --- Intersection Observer (控制进入视口加载) ---
+    // --- 交互与滚动监听 ---
     useEffect(() => {
         if (isLoading || images.length === 0) return
 
         const observer = new IntersectionObserver(
-            (entries) => {
+            entries => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const index = parseInt(entry.target.getAttribute('data-index') || '0')
@@ -193,17 +209,13 @@ const Linkcccp_CBZPreview: React.FC<{
                     }
                 })
             },
-            {
-                root: containerRef.current,
-                rootMargin: '1200px 0px' // 缓冲加载：在用户滚动到之前 1200px 就开始加载
-            }
+            { root: containerRef.current, rootMargin: '1200px 0px' }
         )
 
         imageRefsRef.current.forEach(el => el && observer.observe(el))
         return () => observer.disconnect()
     }, [isLoading, images.length, loadPageImage])
 
-    // --- 滚动与滚动条同步 ---
     useEffect(() => {
         const container = containerRef.current
         if (!container || images.length === 0) return
@@ -214,44 +226,34 @@ const Linkcccp_CBZPreview: React.FC<{
                 const scrollHeight = container.scrollHeight - container.clientHeight
                 const ratio = scrollHeight > 0 ? container.scrollTop / scrollHeight : 0
                 const index = Math.min(Math.floor(ratio * images.length), images.length - 1)
-
                 if (index !== currentPageIndex) {
                     setCurrentPageIndex(index)
-                    // 每当翻页时，尝试清理一次远处图片的内存
                     cleanupOffscreenImages(index)
                 }
             }
         }
         container.addEventListener('scroll', handleScroll)
         return () => container.removeEventListener('scroll', handleScroll)
-    }, [images, isUserDragging, currentPageIndex, cleanupOffscreenImages])
+    }, [images, isUserDragging, currentPageIndex, cleanupOffscreenImages, saveProgress])
 
-    // 恢复历史进度
+    // 恢复进度
     useEffect(() => {
         if (!isLoading && images.length > 0 && containerRef.current) {
-            const savedPosition = loadProgress()
-            if (savedPosition > 0) {
-                setTimeout(() => {
-                    containerRef.current?.scrollTo({
-                        top: savedPosition,
-                        behavior: 'auto'
-                    })
-                }, 300)
-            }
+            const pos = loadProgress()
+            if (pos > 0) setTimeout(() => containerRef.current?.scrollTo({ top: pos }), 300)
         }
-    }, [isLoading])
-
-    // 全屏切换监控
-    useEffect(() => {
-        const handleFs = () => setIsFullscreen(!!document.fullscreenElement)
-        document.addEventListener('fullscreenchange', handleFs)
-        return () => document.removeEventListener('fullscreenchange', handleFs)
-    }, [])
+    }, [isLoading, loadProgress, images.length])
 
     const toggleFullscreen = () => {
         if (!isFullscreen) containerRef.current?.requestFullscreen?.()
         else document.exitFullscreen?.()
     }
+
+    useEffect(() => {
+        const fn = () => setIsFullscreen(!!document.fullscreenElement)
+        document.addEventListener('fullscreenchange', fn)
+        return () => document.removeEventListener('fullscreenchange', fn)
+    }, [])
 
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = parseInt(e.target.value)
@@ -267,9 +269,8 @@ const Linkcccp_CBZPreview: React.FC<{
         return (
             <PreviewContainer>
                 <div className="flex flex-col items-center justify-center p-20 text-gray-500">
-                    <FontAwesomeIcon icon={faSpinner} spin className="text-3xl mb-4 text-blue-500" />
-                    <p className="font-bold">开启秒读优化模式...</p>
-                    <p className="text-xs mt-2 opacity-60">仅从 OneDrive 读取文件索引，无需全量下载</p>
+                    <FontAwesomeIcon icon={faSpinner} spin className="mb-4 text-3xl text-blue-500" />
+                    <p className="font-bold">秒开技术优化中...</p>
                 </div>
             </PreviewContainer>
         )
@@ -279,9 +280,8 @@ const Linkcccp_CBZPreview: React.FC<{
         return (
             <PreviewContainer>
                 <div className="flex flex-col items-center justify-center p-16 text-red-500">
-                    <FontAwesomeIcon icon={faExclamationTriangle} className="text-3xl mb-4" />
-                    <p className="font-semibold">无法预览此漫画</p>
-                    <p className="text-sm mt-2">{error}</p>
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="mb-4 text-3xl" />
+                    <p>{error}</p>
                     <div className="mt-8">
                         <DownloadButtonGroup />
                     </div>
@@ -292,21 +292,15 @@ const Linkcccp_CBZPreview: React.FC<{
 
     return (
         <PreviewContainer>
-            {/* 顶栏栏 */}
-            <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-b dark:border-gray-800 z-10 relative">
-                <div className="flex items-center space-x-3 overflow-hidden">
-                    <h3 className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-sm">
-                        {file.name}
-                    </h3>
-                    <span className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-gray-500">
-                        {images.length}P
-                    </span>
+            <div className="flex items-center justify-between border-b bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex items-center space-x-3 truncate">
+                    <h3 className="max-w-sm truncate font-medium">{file.name}</h3>
+                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-800">{images.length}P</span>
                 </div>
                 <div className="flex items-center space-x-2">
                     <button
                         onClick={toggleFullscreen}
-                        className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                        title={isFullscreen ? '退出全屏' : '全屏预览'}
+                        className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
                     >
                         <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
                     </button>
@@ -314,12 +308,9 @@ const Linkcccp_CBZPreview: React.FC<{
                 </div>
             </div>
 
-            {/* 阅读区域 */}
             <div
                 ref={containerRef}
-                className={`overflow-y-auto scroll-smooth relative ${isFullscreen
-                    ? 'h-screen bg-black'
-                    : 'h-[65vh] md:h-[75vh] bg-gray-50 dark:bg-[#0f0f0f]'
+                className={`relative overflow-y-auto scroll-smooth ${isFullscreen ? 'h-screen bg-black' : 'h-[65vh] md:h-[75vh] bg-gray-50 dark:bg-[#0f0f0f]'
                     }`}
             >
                 <div className="flex flex-col items-center pb-20">
@@ -330,33 +321,22 @@ const Linkcccp_CBZPreview: React.FC<{
                             ref={el => {
                                 imageRefsRef.current[idx] = el
                             }}
-                            className="w-full flex flex-col items-center relative min-h-[500px] justify-center border-b border-transparent"
+                            className="relative flex min-h-[500px] w-full flex-col items-center justify-center"
                         >
                             {img.url ? (
-                                <img
-                                    src={img.url}
-                                    alt={`Page ${idx + 1}`}
-                                    className="max-w-full h-auto selection:bg-transparent"
-                                />
+                                <img src={img.url} alt={`Page ${idx + 1}`} className="h-auto max-w-full" />
                             ) : (
-                                <div className="flex flex-col items-center text-gray-400 py-40">
+                                <div className="flex flex-col items-center py-40 text-gray-400">
                                     <FontAwesomeIcon icon={faSpinner} spin className="mb-2 opacity-50" />
-                                    <span className="text-xs font-mono tracking-widest uppercase opacity-40">Loading Page {idx + 1}</span>
+                                    <span className="text-xs opacity-40">Loading {idx + 1}...</span>
                                 </div>
                             )}
-                            {img.error && <p className="text-red-500 text-xs py-10">❌ 加载此页失败</p>}
                         </div>
                     ))}
                 </div>
 
-                {/* 底部信息 */}
-                <div className="py-20 text-center text-gray-400 dark:text-gray-600 italic">
-                    <p>— THE END —</p>
-                </div>
-
-                {/* 悬浮进度控制（仅全屏显示） */}
                 {isFullscreen && (
-                    <div className="fixed bottom-0 left-0 right-0 bg-black/70 backdrop-blur-md p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex items-center gap-4 z-50">
+                    <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center gap-4 bg-black/70 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-md">
                         <input
                             type="range"
                             min="0"
@@ -365,9 +345,9 @@ const Linkcccp_CBZPreview: React.FC<{
                             onMouseDown={() => setIsUserDragging(true)}
                             onMouseUp={() => setIsUserDragging(false)}
                             onChange={handleSliderChange}
-                            className="flex-1 h-1.5 bg-gray-600 rounded-full appearance-none cursor-pointer accent-white"
+                            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-gray-600 accent-white"
                         />
-                        <div className="bg-white text-black px-4 py-1.5 rounded-full text-sm font-bold shadow-xl border border-white/20">
+                        <div className="rounded-full border border-white/20 bg-white px-4 py-1.5 text-sm font-bold text-black shadow-xl">
                             {currentPageIndex + 1} / {images.length}
                         </div>
                     </div>
