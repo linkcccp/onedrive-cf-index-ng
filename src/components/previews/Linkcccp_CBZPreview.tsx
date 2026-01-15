@@ -383,6 +383,7 @@ const Linkcccp_CBZPreview: React.FC<{
                     {images.map((img, idx) => (
                         <div
                             key={img.name}
+                            data-index={idx}
                             ref={el => {
                                 if (el) imageRefsRef.current.set(idx, el)
                                 else imageRefsRef.current.delete(idx)
