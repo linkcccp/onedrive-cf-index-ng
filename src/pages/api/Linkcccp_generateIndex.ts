@@ -279,11 +279,12 @@ function generateIndexContent(items: IndexNode[], generatedTime: string): string
     // 转义 baseDir 中的特殊字符以防万一
     const escapedBaseDir = escapeMarkdownSpecialChars(baseDir)
 
-    const title = `# 📚 OneDrive 文件索引`
+    // 使用真实的 Unicode 字符确保不被转义成 \uXXXX 文本
+    const title = `# \u{1F4DA} OneDrive 文件索引`
     const subtitle = `**基目录**: \`${escapedBaseDir}\` | **总文件数**: ${totalItems}`
     const timestamp = `**生成时间**: ${generatedTime}`
     const note =
-        '> 💡 **使用 Ctrl + F 搜索** 来快速查找文件（支持中文搜索，克服 OneDrive 原生搜索的不足）\n\n> ⚠️ 本索引为静态快照，如有新增/删除文件，请点击导航栏"Index"按钮重新生成。'
+        '> \u{1F4A1} **使用 Ctrl + F 搜索** 来快速查找文件（支持中文搜索，克服 OneDrive 原生搜索的不足）\n\n> \u{26A0}\u{FE0F} 本索引为静态快照，如有新增/删除文件，请点击导航栏"Index"按钮重新生成。'
     const separator = '\n---\n\n'
 
     const content = convertToMarkdown(items)
