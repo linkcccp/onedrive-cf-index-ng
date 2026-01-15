@@ -167,6 +167,10 @@ function escapeHtml(str: string): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;')
+        .replace(/\[/g, '&#91;')
+        .replace(/\]/g, '&#93;')
+        .replace(/\(/g, '&#40;')
+        .replace(/\)/g, '&#41;')
 }
 
 /**
