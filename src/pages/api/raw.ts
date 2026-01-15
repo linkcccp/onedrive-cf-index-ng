@@ -58,21 +58,29 @@ export default async function handler(req: NextRequest): Promise<Response> {
     })
 
     if ('@microsoft.graph.downloadUrl' in data) {
-      // Only proxy raw file content response for files up to 4MB
-      if (proxy && 'size' in data && data['size'] < 4194304) {
-        const { headers, data: stream } = await axios.get(data['@microsoft.graph.downloadUrl'] as string, {
-          responseType: 'stream',
-        })
-        headers['Cache-Control'] = cacheControlHeader
-        // Send data stream as response
-        // TODO
-        // res.writeHead(200, headers as AxiosResponseHeaders)
-        // stream.pipe(res)
-        return new Response()
-      } else {
-        headers['Location'] = data['@microsoft.graph.downloadUrl'] as string
-        return new Response(null, { status: 302, headers: headers})
+      const driveDownloadUrl = data['@microsoft.graph.downloadUrl'] as string
+      const fileSize = data['size'] || 0
+
+      // 如果文件太大（超过 90MB），则直接重定向到微软官方下载地址，避免 Cloudflare 100MB 的响应限制
+      if (fileSize > 94371840) {
+        return new Response(null, { status: 302, headers: { 'Location': driveDownloadUrl } })
       }
+
+      // 小于 90MB 的文件，通过 Cloudflare 代理并支持分段请求（Range Request），以便进行 CDN 缓存
+      const range = req.headers.get('range')
+      const response = await fetch(driveDownloadUrl, {
+        headers: range ? { 'Range': range } : {}
+      })
+
+      // 复制原始响应头并覆盖缓存控制和跨域头
+      const newHeaders = new Headers(response.headers)
+      newHeaders.set('Cache-Control', cacheControlHeader)
+      newHeaders.set('Access-Control-Allow-Origin', '*')
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: newHeaders,
+      })
     } else {
       return new Response(JSON.stringify({ error: 'No download url found.' }), { status: 404, headers: headers })
     }
