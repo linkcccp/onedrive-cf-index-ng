@@ -197,33 +197,46 @@ function convertToMarkdown(items: IndexNode[], depth: number = 0): string {
     let markdown = ''
 
     for (const item of items) {
+        // 捕获单项转换内的错误，但尽量不要阻止整个索引生成
+        // 任何步骤失败，都使用最稳妥的后备方案继续输出
+        // 编码处理：文件名路径必须经过 encodeURIComponent 处理
+        let encodedPath = ''
         try {
-            // 编码处理：文件名路径必须经过 encodeURIComponent 处理
-            const encodedPath = encodeUrlPath(item.path)
-            // Markdown 安全转义：用于降级显示
-            const escapedName = escapeMarkdownSpecialChars(item.name)
-            // HTML 转义：用于放在 <a> 文本中，避免中括号/圆括号等破坏 Markdown 链接语法
-            const htmlEscapedName = escapeHtml(item.name)
+            encodedPath = encodeUrlPath(item.path)
+        } catch (e) {
+            console.error(`Warning: encodeUrlPath failed for ${item.path}, using encodeURIComponent fallback`, e)
+            try {
+                encodedPath = encodeURIComponent(String(item.path))
+            } catch (e2) {
+                encodedPath = ''
+            }
+        }
 
-            const icon = item.isFolder ? '📁' : '📄'
+        // Markdown 安全转义：用于降级显示
+        const escapedName = escapeMarkdownSpecialChars(item.name || '')
+        // HTML 转义：用于放在 <a> 文本中，避免中括号/圆括号等破坏 Markdown 链接语法
+        const htmlEscapedName = escapeHtml(item.name || escapedName)
 
+        const icon = item.isFolder ? '📁' : '📄'
+
+        try {
             // 使用 HTML 链接替代 Markdown 原生的 [text](url) 语法，
             // 避免文件名中包含未配对的 `]` 或 `)` 导致链接断裂
+            const href = encodedPath ? `/${encodedPath}` : `/${encodeURIComponent(item.name || '')}`
+
             if (item.isFolder) {
                 // 文件夹用粗体包裹 HTML 链接
-                markdown += `${indent}- ${icon} **<a href="/${encodedPath}">${htmlEscapedName}</a>**\n`
+                markdown += `${indent}- ${icon} **<a href="${href}">${htmlEscapedName}</a>**\n`
                 if (item.children && item.children.length > 0) {
                     markdown += convertToMarkdown(item.children, depth + 1)
                 }
             } else {
                 // 文件用普通 HTML 链接
-                markdown += `${indent}- ${icon} <a href="/${encodedPath}">${htmlEscapedName}</a>\n`
+                markdown += `${indent}- ${icon} <a href="${href}">${htmlEscapedName}</a>\n`
             }
         } catch (error) {
-            console.error(`Error converting item to markdown: ${item.name}`, error)
-            // 降级处理：直接显示文件名而不是链接
-            const icon = item.isFolder ? '📁' : '📄'
-            const escapedName = escapeMarkdownSpecialChars(item.name)
+            // 记录详细信息但不要抛出，使用最保守的纯文本显示
+            console.error(`Error building link for item ${item.name} (path=${item.path}):`, error)
             markdown += `${indent}- ${icon} ${escapedName}\n`
             continue
         }
