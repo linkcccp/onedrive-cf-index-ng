@@ -15,19 +15,12 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   const { asPath } = useRouter()
   const hashedToken = getStoredToken(asPath)
 
-  const [epubContainerWidth, setEpubContainerWidth] = useState(400)
-  const epubContainer = useRef<HTMLDivElement>(null)
-
   // Linkcccp: 用于控制滚轮翻页频率的节流计时器
   const lastWheelTime = useRef(0)
 
   const [loading, setLoading] = useState(true)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    setEpubContainerWidth(epubContainer.current ? epubContainer.current.offsetWidth : 400)
-  }, [])
 
   // Linkcccp: 离线缓存加载逻辑
   useEffect(() => {
@@ -93,52 +86,47 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
 
     // 新增: 注册鼠标滚轮事件监听
     rendition.hooks.content.register(contents => {
-      const body = contents.window.document.body
-      body.addEventListener('wheel', (e: WheelEvent) => {
-        const now = Date.now()
-        // 节流: 500ms 内只响应一次滚轮
-        if (now - lastWheelTime.current < 500) return
-        lastWheelTime.current = now
+      const el = contents.document.documentElement
+      if (el) {
+        el.addEventListener('wheel', (e: WheelEvent) => {
+          e.preventDefault() // 阻止默认滚动行为，防止页面抖动
+          const now = Date.now()
+          // 节流: 500ms 内只响应一次滚轮
+          if (now - lastWheelTime.current < 500) return
+          lastWheelTime.current = now
 
-        if (e.deltaY > 0) {
-          rendition.next()
-        } else if (e.deltaY < 0) {
-          rendition.prev()
-        }
-      })
+          if (e.deltaY > 0) {
+            rendition.next()
+          } else if (e.deltaY < 0) {
+            rendition.prev()
+          }
+        })
+      }
     })
   }
 
   return (
     <div>
       <div
-        className="no-scrollbar flex w-full flex-col overflow-scroll rounded bg-white dark:bg-gray-900 md:p-3"
-        style={{ maxHeight: '90vh' }}
+        className="flex w-full flex-col rounded bg-white dark:bg-gray-900 md:p-3"
+        style={{ height: '85vh' }}
       >
-        <div className="no-scrollbar w-full flex-1 overflow-scroll" ref={epubContainer} style={{ minHeight: '70vh' }}>
-          <div
-            style={{
-              position: 'absolute',
-              width: epubContainerWidth,
-              height: '70vh',
+        <div className="relative w-full flex-1 overflow-hidden">
+          <ReactReader
+            url={blobUrl}
+            getRendition={rendition => fixEpub(rendition)}
+            loadingView={<Loading loadingText="Parsing EPUB..." />}
+            location={location}
+            locationChanged={onLocationChange}
+            epubInitOptions={{ openAs: 'epub' }}
+            swipeable={true} // Linkcccp: 启用滑动翻页支持
+            // 修改此处配置以启用翻页效果
+            epubOptions={{
+              flow: 'paginated',    // 将 'scrolled' 改为 'paginated' 以启用分页
+              manager: 'default',   // 指定默认的分页管理器
+              allowPopups: true
             }}
-          >
-            <ReactReader
-              url={blobUrl}
-              getRendition={rendition => fixEpub(rendition)}
-              loadingView={<Loading loadingText="Parsing EPUB..." />}
-              location={location}
-              locationChanged={onLocationChange}
-              epubInitOptions={{ openAs: 'epub' }}
-              swipeable={true} // Linkcccp: 启用滑动翻页支持
-              // 修改此处配置以启用翻页效果
-              epubOptions={{
-                flow: 'paginated',    // 将 'scrolled' 改为 'paginated' 以启用分页
-                manager: 'default',   // 指定默认的分页管理器
-                allowPopups: true
-              }}
-            />
-          </div>
+          />
         </div>
       </div>
       <DownloadBtnContainer>
