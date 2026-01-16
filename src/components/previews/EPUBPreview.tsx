@@ -63,8 +63,22 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     }
   }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
 
+  // Linkcccp: 历史进度存取逻辑
+  const storageKey = `epub-progress-${file.id || asPath}`
   const [location, setLocation] = useState<string>()
-  const onLocationChange = (cfiStr: string) => setLocation(cfiStr)
+
+  // 加载初始进度
+  useEffect(() => {
+    const savedLocation = localStorage.getItem(storageKey)
+    if (savedLocation) {
+      setLocation(savedLocation)
+    }
+  }, [storageKey])
+
+  const onLocationChange = (cfiStr: string) => {
+    setLocation(cfiStr)
+    localStorage.setItem(storageKey, cfiStr)
+  }
 
   if (loading || !blobUrl) {
     return (
