@@ -3,6 +3,8 @@ import type { OdFileObject } from '../../types'
 import { FC, useEffect, useRef, useState } from 'react'
 import { ReactReader } from 'react-reader'
 import { useRouter } from 'next/router'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faBookOpen, faFileAlt } from '@fortawesome/free-solid-svg-icons'
 
 import Loading from '../Loading'
 import DownloadButtonGroup from '../DownloadBtnGtoup'
@@ -21,6 +23,9 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   const [loading, setLoading] = useState(true)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
+
+  // Linkcccp: 是否单页显示 (默认开启)
+  const [isSinglePage, setIsSinglePage] = useState(true)
 
   // Linkcccp: 离线缓存加载逻辑
   useEffect(() => {
@@ -111,8 +116,20 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         className="flex w-full flex-col rounded bg-white dark:bg-gray-900 md:p-3"
         style={{ height: '85vh' }}
       >
+        {/* Linkcccp: 页面模式切换按钮 */}
+        <div className="mb-2 flex justify-end px-2">
+          <button
+            onClick={() => setIsSinglePage(!isSinglePage)}
+            className="flex items-center gap-2 rounded bg-gray-100 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <FontAwesomeIcon icon={isSinglePage ? faBookOpen : faFileAlt} />
+            <span>{isSinglePage ? '切换到双页' : '切换到单页'}</span>
+          </button>
+        </div>
+
         <div className="relative w-full flex-1 overflow-hidden">
           <ReactReader
+            key={isSinglePage ? 'single' : 'double'} // Linkcccp: 切换时强制重新渲染，确保排版刷新
             url={blobUrl}
             getRendition={rendition => fixEpub(rendition)}
             loadingView={<Loading loadingText="Parsing EPUB..." />}
@@ -124,7 +141,8 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
             epubOptions={{
               flow: 'paginated',    // 将 'scrolled' 改为 'paginated' 以启用分页
               manager: 'default',   // 指定默认的分页管理器
-              allowPopups: true
+              allowPopups: true,
+              spread: isSinglePage ? 'none' : 'auto' // Linkcccp: 控制单双页显示
             }}
           />
         </div>
