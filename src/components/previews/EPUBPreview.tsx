@@ -18,6 +18,9 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   const [epubContainerWidth, setEpubContainerWidth] = useState(400)
   const epubContainer = useRef<HTMLDivElement>(null)
 
+  // Linkcccp: 用于控制滚轮翻页频率的节流计时器
+  const lastWheelTime = useRef(0)
+
   const [loading, setLoading] = useState(true)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
@@ -76,6 +79,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   // Fix for not valid epub files according to
   // https://github.com/gerhardsletten/react-reader/issues/33#issuecomment-673964947
   const fixEpub = rendition => {
+    // 1. 修复路径问题
     const spineGet = rendition.book.spine.get.bind(rendition.book.spine)
     rendition.book.spine.get = function (target: string) {
       const targetStr = target as string
@@ -86,6 +90,23 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
       }
       return t
     }
+
+    // 新增: 注册鼠标滚轮事件监听
+    rendition.hooks.content.register(contents => {
+      const body = contents.window.document.body
+      body.addEventListener('wheel', (e: WheelEvent) => {
+        const now = Date.now()
+        // 节流: 500ms 内只响应一次滚轮
+        if (now - lastWheelTime.current < 500) return
+        lastWheelTime.current = now
+
+        if (e.deltaY > 0) {
+          rendition.next()
+        } else if (e.deltaY < 0) {
+          rendition.prev()
+        }
+      })
+    })
   }
 
   return (
@@ -109,7 +130,13 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
               location={location}
               locationChanged={onLocationChange}
               epubInitOptions={{ openAs: 'epub' }}
-              epubOptions={{ flow: 'scrolled', allowPopups: true }}
+              swipeable={true} // Linkcccp: 启用滑动翻页支持
+              // 修改此处配置以启用翻页效果
+              epubOptions={{
+                flow: 'paginated',    // 将 'scrolled' 改为 'paginated' 以启用分页
+                manager: 'default',   // 指定默认的分页管理器
+                allowPopups: true
+              }}
             />
           </div>
         </div>
