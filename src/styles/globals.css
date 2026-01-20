@@ -2,6 +2,137 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    /* Fluent Design 颜色变量 - 浅色主题 */
+    --fluent-primary: #0078d4;
+    --fluent-primary-light: #50e6ff;
+    --fluent-primary-dark: #005a9e;
+    --fluent-accent: #d83b01;
+    --fluent-surface: #ffffff;
+    --fluent-surface-card: #f3f2f1;
+    --fluent-surface-panel: #faf9f8;
+    --fluent-text-primary: #323130;
+    --fluent-text-secondary: #605e5c;
+    --fluent-text-tertiary: #a19f9d;
+    --fluent-border: #edebe9;
+    --fluent-border-strong: #8a8886;
+    --fluent-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.08);
+    --fluent-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.08);
+    --fluent-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 4px rgba(0, 0, 0, 0.08);
+    --fluent-shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.18), 0 0 6px rgba(0, 0, 0, 0.12);
+  }
+
+  .dark {
+    /* Fluent Design 颜色变量 - 深色主题 */
+    --fluent-primary: #50e6ff;
+    --fluent-primary-light: #a0f0ff;
+    --fluent-primary-dark: #0078d4;
+    --fluent-accent: #ff8c00;
+    --fluent-surface: #1e1e1e;
+    --fluent-surface-card: #252525;
+    --fluent-surface-panel: #2d2d2d;
+    --fluent-text-primary: #f3f2f1;
+    --fluent-text-secondary: #c8c6c4;
+    --fluent-text-tertiary: #8a8886;
+    --fluent-border: #3b3b3b;
+    --fluent-border-strong: #8a8886;
+    --fluent-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24), 0 0 1px rgba(0, 0, 0, 0.16);
+    --fluent-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.28), 0 0 2px rgba(0, 0, 0, 0.16);
+    --fluent-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.28), 0 0 4px rgba(0, 0, 0, 0.16);
+    --fluent-shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.32), 0 0 6px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 基础样式重置 */
+  body {
+    @apply bg-fluent-surface font-sans text-fluent-text-primary antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* 滚动条样式 */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-fluent-surface-panel;
+    border-radius: 6px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-fluent-border;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-fluent-border-strong;
+  }
+
+  /* 选择文本样式 */
+  ::selection {
+    @apply bg-fluent-primary/30 text-fluent-text-primary;
+  }
+
+  /* 焦点样式 */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-fluent-primary;
+  }
+}
+
+@layer components {
+  /* Fluent 按钮样式 */
+  .fluent-btn {
+    @apply inline-flex items-center justify-center rounded-fluent-md px-4 py-2 font-medium transition-all duration-200;
+    @apply bg-fluent-primary text-white hover:bg-fluent-primary-dark active:bg-fluent-primary-dark;
+    @apply focus:outline-none focus:ring-2 focus:ring-fluent-primary focus:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .fluent-btn-secondary {
+    @apply fluent-btn;
+    @apply border border-fluent-border bg-fluent-surface-card text-fluent-text-primary;
+    @apply hover:bg-fluent-surface-panel active:bg-fluent-surface-panel;
+  }
+
+  .fluent-btn-accent {
+    @apply fluent-btn;
+    @apply bg-fluent-accent text-white hover:bg-fluent-accent/90 active:bg-fluent-accent/80;
+  }
+
+  /* Fluent 卡片样式 */
+  .fluent-card {
+    @apply rounded-fluent-lg border border-fluent-border bg-fluent-surface-card;
+    @apply shadow-fluent-sm transition-shadow duration-200 hover:shadow-fluent-md;
+  }
+
+  /* Fluent 输入框样式 */
+  .fluent-input {
+    @apply w-full rounded-fluent-md border border-fluent-border px-3 py-2;
+    @apply bg-fluent-surface text-fluent-text-primary placeholder-fluent-text-tertiary;
+    @apply focus:border-transparent focus:outline-none focus:ring-2 focus:ring-fluent-primary;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Fluent 亚克力材质效果 */
+  .fluent-acrylic {
+    @apply backdrop-blur-fluent-md backdrop-brightness-fluent-overlay backdrop-saturate-fluent-overlay;
+    background-color: rgba(255, 255, 255, 0.7);
+  }
+
+  .dark .fluent-acrylic {
+    background-color: rgba(30, 30, 30, 0.7);
+  }
+
+  /* Fluent 分隔线 */
+  .fluent-divider {
+    @apply my-4 border-t border-fluent-border;
+  }
+}
+
 @layer utilities {
   /* Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
@@ -12,10 +143,36 @@
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
   }
+
+  /* Fluent 动画工具类 */
+  .animate-fluent-enter {
+    animation: fluentEnter 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+
+  .animate-fluent-exit {
+    animation: fluentExit 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+
+  /* 文本截断 */
+  .text-ellipsis-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .text-ellipsis-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
 .react-pdf__Page__canvas {
-  @apply mx-auto border border-gray-300/40 shadow;
+  @apply mx-auto border border-fluent-border shadow-fluent-sm;
 }
 
 .markdown-body ul {
