@@ -10,17 +10,17 @@
 </div>
 
 ## What's different
+
 - Now it can be deployed on Cloudflare Pages for free!
 - Also support [Docker Deployment](https://github.com/lyc8503/onedrive-cf-index-ng/wiki/Docker-Deployment) now!
 - No more dependency on Upstash / 3rd-party service
 - Maybe some future maintenance or improvements from me ([@lyc8503](https://github.com/lyc8503))
 
-*Special thanks to the original author of this project [@spencerwooo](https://github.com/spencerwooo) and all contributors*
-
+_Special thanks to the original author of this project [@spencerwooo](https://github.com/spencerwooo) and all contributors_
 
 ## TL;DR
 
-Showcase, share, preview, and download files inside *your* OneDrive with onedrive-cf-index-ng -
+Showcase, share, preview, and download files inside _your_ OneDrive with onedrive-cf-index-ng -
 
 - Completely free to host 💸
 - Super fast ⚡ and responsive 💦
@@ -33,7 +33,22 @@ Showcase, share, preview, and download files inside *your* OneDrive with onedriv
 
 🚀 Quick start: [Getting started](https://github.com/lyc8503/onedrive-cf-index-ng/wiki/Getting-Started).
 
-*If you happen to like this project, please give it a star!* :3
+_If you happen to like this project, please give it a star!_ :3
+
+## Local Development
+
+When running locally without Cloudflare KV, the application now uses an in-memory store for OneDrive authentication tokens. This means tokens will be persisted across requests during a single development session, but will be lost when the dev server restarts.
+
+### Using Wrangler for local KV simulation
+
+To better simulate the production environment, you can set up a local KV namespace using Wrangler:
+
+1. Ensure Wrangler is installed (already a project dependency). If not, install globally: `npm install -g wrangler` or use the local one via `npx wrangler`.
+2. Create a KV namespace locally: `npx wrangler kv:namespace create ONEDRIVE_CF_INDEX_KV --preview`.
+3. Copy the generated binding configuration (e.g., `{ binding = "ONEDRIVE_CF_INDEX_KV", id = "..." }`) and add it to a `wrangler.toml` file in the project root (if not already present).
+4. Start the local development server with KV enabled: `npx wrangler dev --local`.
+
+Alternatively, you can run the Next.js dev server as usual (`npm run dev`) and rely on the in-memory store for simplicity.
 
 ## Demo
 
@@ -129,7 +144,7 @@ Documentation is hosted at [GitHub Wiki](https://github.com/lyc8503/onedrive-cf-
 
   **Please open an issue for help, before that make sure that you have searched for existing/solved issues.**
 
-## Server-*less* (free)?
+## Server-_less_ (free)?
 
 Yes! Completely free with no backend server what-so-ever.
 
@@ -138,6 +153,7 @@ Yes! Completely free with no backend server what-so-ever.
 [MIT](LICENSE)
 
 ## Some TODOs
+
 - [ ] Documentation migration
 - [x] Local/Docker deployment support
 - [ ] Some TODOs left in the code
@@ -147,5 +163,3 @@ Yes! Completely free with no backend server what-so-ever.
   <img src="./public/footer.png" />
   <em>made with ❤️ by <a href="https://lyc8503.net">lyc8503</a> & <a href="https://spencerwoo.com">spencer woo</a></em>
 </div>
-
-

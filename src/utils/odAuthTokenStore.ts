@@ -1,14 +1,21 @@
 import { KVNamespace } from '@cloudflare/workers-types'
 
+// In-memory token store for development when KV is not available
+const memoryStore: {
+  accessToken?: string
+  accessTokenExpiry?: number
+  refreshToken?: string
+} = {}
+
 export async function getOdAuthTokens(): Promise<{ accessToken: unknown; refreshToken: unknown }> {
   const { ONEDRIVE_CF_INDEX_KV } = process.env as unknown as { ONEDRIVE_CF_INDEX_KV: KVNamespace }
 
-  // If KV is not available (e.g., local development), return undefined tokens
+  // If KV is not available (e.g., local development), use in-memory store
   if (!ONEDRIVE_CF_INDEX_KV) {
-    console.warn('ONEDRIVE_CF_INDEX_KV is not defined. Returning empty tokens.')
+    console.warn('ONEDRIVE_CF_INDEX_KV is not defined. Using in-memory token store.')
     return {
-      accessToken: undefined,
-      refreshToken: undefined,
+      accessToken: memoryStore.accessToken,
+      refreshToken: memoryStore.refreshToken,
     }
   }
 
@@ -32,9 +39,12 @@ export async function storeOdAuthTokens({
 }): Promise<void> {
   const { ONEDRIVE_CF_INDEX_KV } = process.env as unknown as { ONEDRIVE_CF_INDEX_KV: KVNamespace }
 
-  // If KV is not available (e.g., local development), skip storing
+  // If KV is not available (e.g., local development), use in-memory store
   if (!ONEDRIVE_CF_INDEX_KV) {
-    console.warn('ONEDRIVE_CF_INDEX_KV is not defined. Skipping token storage.')
+    console.warn('ONEDRIVE_CF_INDEX_KV is not defined. Storing tokens in memory.')
+    memoryStore.accessToken = accessToken
+    memoryStore.accessTokenExpiry = accessTokenExpiry
+    memoryStore.refreshToken = refreshToken
     return
   }
 
