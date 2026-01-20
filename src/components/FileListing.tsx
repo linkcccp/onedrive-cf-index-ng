@@ -38,9 +38,6 @@ import { PreviewContainer } from './previews/Containers'
 
 import FolderListLayout from './FolderListLayout'
 import FolderGridLayout from './FolderGridLayout'
-import BookGrid from './Linkcccp_BookGrid'
-import useInfiniteBooks from '../utils/Linkcccp_useInfiniteBooks'
-import { BookMetadata } from './Linkcccp_BookCard'
 
 // Disabling SSR for some previews
 const EPUBPreview = dynamic(() => import('./previews/EPUBPreview'), {
@@ -168,7 +165,6 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const path = queryToPath(query)
   console.log('FileListing query:', query, 'path:', path)
   const isRoot = path === '/'
-  const { books, loading, hasMore, error: booksError, loadMore } = useInfiniteBooks(isRoot ? '/' : '')
 
   const { data, error, size, setSize } = useProtectedSWRInfinite(path)
 
