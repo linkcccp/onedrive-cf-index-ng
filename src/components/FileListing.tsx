@@ -158,6 +158,8 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const [folderGenerating, setFolderGenerating] = useState<{
     [key: string]: boolean
   }>({})
+  const [flatFiles, setFlatFiles] = useState<OdFolderChildren[]>([])
+  const [loadingFlat, setLoadingFlat] = useState(false)
 
   const router = useRouter()
   const hashedToken = getStoredToken(router.asPath)
@@ -168,6 +170,41 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const { books, loading, hasMore, error: booksError, loadMore } = useInfiniteBooks(isRoot ? '/' : '')
 
   const { data, error, size, setSize } = useProtectedSWRInfinite(path)
+
+  // Recursively fetch all files in subfolders when the current path is a folder
+  useEffect(() => {
+    const folderData = data?.[0]?.folder
+    if (folderData) {
+      let isMounted = true
+      const fetchFlatFiles = async () => {
+        setLoadingFlat(true)
+        const files: OdFolderChildren[] = []
+        try {
+          for await (const { meta, isFolder, error } of traverseFolder(path)) {
+            if (error) continue
+            if (!isFolder) {
+              files.push(meta)
+            }
+          }
+          if (isMounted) {
+            setFlatFiles(files)
+            setLoadingFlat(false)
+          }
+        } catch (err) {
+          console.error('Failed to traverse folder:', err)
+          if (isMounted) setLoadingFlat(false)
+        }
+      }
+      fetchFlatFiles()
+      return () => {
+        isMounted = false
+      }
+    } else {
+      // Not a folder, reset flat files
+      setFlatFiles([])
+      setLoadingFlat(false)
+    }
+  }, [path, data])
 
   if (error) {
     // If error includes 403 which means the user has not completed initial setup, redirect to OAuth page
@@ -192,6 +229,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
 
   const responses: any[] = data ? [].concat(...data) : []
 
+
   const isLoadingInitialData = !data && !error
   const isLoadingMore = isLoadingInitialData || (size > 0 && data && typeof data[size - 1] === 'undefined')
   const isEmpty = data?.[0]?.length === 0
@@ -202,11 +240,15 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     // Expand list of API returns into flattened file data
     const folderChildren = [].concat(...responses.map(r => r.folder.value)) as OdFolderObject['value']
 
+
     // Find README.md file to render
     const readmeFile = folderChildren.find(c => c.name.toLowerCase() === 'readme.md')
 
-    // Filtered file list helper
-    const getFiles = () => folderChildren.filter(c => !c.folder && c.name !== '.password')
+    // Filtered file list helper - use flatFiles if available, otherwise fallback to current folder children
+    const getFiles = () => {
+      const source = loadingFlat ? folderChildren : flatFiles.length > 0 ? flatFiles : folderChildren
+      return source.filter(c => !c.folder && c.name !== '.password')
+    }
 
     // File selection
     const genTotalSelected = (selected: { [key: string]: boolean }) => {
@@ -324,10 +366,11 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
 
 
     // Folder layout component props
+    const displayChildren = getFiles()
     const folderProps = {
       toast,
       path,
-      folderChildren,
+      folderChildren: displayChildren,
       selected,
       toggleItemSelected,
       totalSelected,
@@ -339,19 +382,12 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
       handleFolderDownload,
     }
 
-    // If root path, show book grid with real data
+    // If root path, show flattened file list instead of book grid
     if (isRoot) {
       return (
         <>
           <Toaster />
-          <div className="rounded-fluent-lg bg-fluent-surface-card shadow-fluent-sm dark:bg-fluent-surface-card dark:text-fluent-text-primary">
-            <div className="border-b border-fluent-border px-3 py-2 text-xs font-bold uppercase tracking-widest text-fluent-text-secondary dark:border-fluent-border dark:text-fluent-text-secondary">
-              {`${books.length} book(s)`}
-            </div>
-            <div className="p-3">
-              <BookGrid books={books} hasMore={hasMore} loading={loading} loadMore={loadMore} />
-            </div>
-          </div>
+          {layout.name === 'Grid' ? <FolderGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
           {readmeFile && (
             <div className="mt-4">
               <MarkdownPreview file={readmeFile} path={path} standalone={false} />
@@ -367,34 +403,6 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
 
         {layout.name === 'Grid' ? <FolderGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
 
-        {!onlyOnePage && (
-          <div className="rounded-b bg-white dark:bg-gray-900 dark:text-gray-100">
-            <div className="border-b border-gray-200 p-3 text-center font-mono text-sm text-gray-400 dark:border-gray-700">
-              {`- showing ${size} page(s) ` +
-                (isLoadingMore ? `of ... file(s) -` : `of ${folderChildren.length} file(s) -`)}
-            </div>
-            <button
-              className={`flex w-full items-center justify-center space-x-2 p-3 disabled:cursor-not-allowed ${isLoadingMore || isReachingEnd ? 'opacity-60' : 'hover:bg-gray-100 dark:hover:bg-gray-850'
-                }`}
-              onClick={() => setSize(size + 1)}
-              disabled={isLoadingMore || isReachingEnd}
-            >
-              {isLoadingMore ? (
-                <>
-                  <LoadingIcon className="inline-block h-4 w-4 animate-spin" />
-                  <span>{'Loading ...'}</span>{' '}
-                </>
-              ) : isReachingEnd ? (
-                <span>{'No more files'}</span>
-              ) : (
-                <>
-                  <span>{'Load more'}</span>
-                  <FontAwesomeIcon icon="chevron-circle-down" />
-                </>
-              )}
-            </button>
-          </div>
-        )}
 
         {readmeFile && (
           <div className="mt-4">
