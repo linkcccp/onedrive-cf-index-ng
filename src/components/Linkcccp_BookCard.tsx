@@ -27,9 +27,9 @@ const BookCard: React.FC<BookCardProps> = ({ book }) => {
 
   return (
     <Link href={book.bookUrl} passHref>
-      <div className="group relative cursor-pointer overflow-hidden rounded-fluent-lg bg-fluent-surface-card shadow-fluent-sm transition-all duration-150 hover:shadow-fluent-md dark:bg-fluent-surface-card">
+      <div className="group relative cursor-pointer overflow-hidden rounded-fluent-lg bg-fluent-surface-card shadow-fluent-sm transition-all duration-150 hover:shadow-fluent-md dark:bg-fluent-surface-card w-[180px] h-[305px] flex flex-col items-center">
         {/* Cover image */}
-        <div className="aspect-[2/3] overflow-hidden rounded-t-fluent-lg bg-fluent-surface-panel">
+        <div className="w-[150px] h-[225px] mt-2 overflow-hidden rounded-fluent-lg bg-fluent-surface-panel">
           {!coverError ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -46,14 +46,14 @@ const BookCard: React.FC<BookCardProps> = ({ book }) => {
         </div>
 
         {/* Book info */}
-        <div className="p-3">
-          <h3 className="mb-1 line-clamp-2 h-10 text-sm font-semibold text-fluent-text-primary dark:text-fluent-text-primary">
+        <div className="w-[150px] mt-2 p-2 flex flex-col flex-grow">
+          <p className="text-sm font-semibold text-fluent-text-primary dark:text-fluent-text-primary line-clamp-2 mb-1">
             {book.title}
-          </h3>
-          <p className="line-clamp-2 h-8 text-xs text-fluent-text-secondary dark:text-fluent-text-secondary">
+          </p>
+          <p className="text-xs text-fluent-text-secondary dark:text-fluent-text-secondary line-clamp-2">
             {book.authors.join(', ')}
           </p>
-          <div className="mt-2 flex items-center justify-between">
+          <div className="mt-auto pt-2 flex items-center justify-between">
             <span className="rounded-full bg-fluent-brand-primary/10 px-2 py-1 text-xs font-medium text-fluent-brand-primary dark:bg-fluent-brand-primary/20 dark:text-fluent-brand-primary">
               {book.format.toUpperCase()}
             </span>

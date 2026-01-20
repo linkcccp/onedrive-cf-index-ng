@@ -47,9 +47,9 @@ const BookGrid: React.FC<BookGridProps> = ({ books, hasMore, loading, loadMore }
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 justify-items-center">
             {books.map((book) => (
-              <div key={book.id} className="flex justify-center">
+              <div key={book.id} className="flex justify-center w-[180px]">
                 <BookCard book={book} />
               </div>
             ))}
