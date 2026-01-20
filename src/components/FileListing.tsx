@@ -164,6 +164,8 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const [layout, _] = useLocalStorage('preferredLayout', layouts[1])
 
   const path = queryToPath(query)
+  const isRoot = path === '/'
+  const { books, loading, hasMore, error: booksError, loadMore } = useInfiniteBooks(isRoot ? '/' : '')
 
   const { data, error, size, setSize } = useProtectedSWRInfinite(path)
 
@@ -320,6 +322,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
         })
     }
 
+
     // Folder layout component props
     const folderProps = {
       toast,
@@ -336,6 +339,27 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
       handleFolderDownload,
     }
 
+    // If root path, show book grid with real data
+    if (isRoot) {
+      return (
+        <>
+          <Toaster />
+          <div className="rounded-fluent-lg bg-fluent-surface-card shadow-fluent-sm dark:bg-fluent-surface-card dark:text-fluent-text-primary">
+            <div className="border-b border-fluent-border px-3 py-2 text-xs font-bold uppercase tracking-widest text-fluent-text-secondary dark:border-fluent-border dark:text-fluent-text-secondary">
+              {`${books.length} book(s)`}
+            </div>
+            <div className="p-3">
+              <BookGrid books={books} hasMore={hasMore} loading={loading} loadMore={loadMore} />
+            </div>
+          </div>
+          {readmeFile && (
+            <div className="mt-4">
+              <MarkdownPreview file={readmeFile} path={path} standalone={false} />
+            </div>
+          )}
+        </>
+      );
+    }
 
     return (
       <>
