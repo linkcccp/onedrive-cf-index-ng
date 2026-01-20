@@ -11,7 +11,7 @@ export const layouts: Array<{ id: number; name: 'Grid' | 'List'; icon: IconProp 
 ]
 
 const SwitchLayout = () => {
-  const [preferredLayout, setPreferredLayout] = useLocalStorage('preferredLayout', layouts[0])
+  const [preferredLayout, setPreferredLayout] = useLocalStorage('preferredLayout', layouts[1])
 
   return (
     <div className="relative w-24 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300 md:w-28">

@@ -21,7 +21,7 @@ const GridItem = ({ c, path }: { c: OdFolderChildren; path: string }) => {
 
   return (
     <div className="space-y-2">
-      <div className="h-32 overflow-hidden rounded border border-gray-900/10 dark:border-gray-500/30">
+      <div className="h-32 overflow-hidden rounded border border-fluent-border dark:border-fluent-border">
         {thumbnailUrl && !brokenThumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -31,9 +31,9 @@ const GridItem = ({ c, path }: { c: OdFolderChildren; path: string }) => {
             onError={() => setBrokenThumbnail(true)}
           />
         ) : (
-          <div className="relative flex h-full w-full items-center justify-center rounded-lg">
+          <div className="relative flex h-full w-full items-center justify-center rounded-fluent-md">
             <ChildIcon child={c} />
-            <span className="absolute bottom-0 right-0 m-1 font-medium text-gray-700 dark:text-gray-500">
+            <span className="absolute bottom-0 right-0 m-1 font-medium text-fluent-text-secondary dark:text-fluent-text-secondary">
               {c.folder?.childCount}
             </span>
           </div>
@@ -46,7 +46,7 @@ const GridItem = ({ c, path }: { c: OdFolderChildren; path: string }) => {
         </span>
         <ChildName name={c.name} folder={Boolean(c.folder)} />
       </div>
-      <div className="truncate text-center font-mono text-xs text-gray-700 dark:text-gray-500">
+      <div className="truncate text-center font-mono text-xs text-fluent-text-tertiary dark:text-fluent-text-tertiary">
         {formatModifiedDateTime(c.lastModifiedDateTime)}
       </div>
     </div>
@@ -74,10 +74,10 @@ const FolderGridLayout = ({
   const getItemPath = (name: string) => `${path === '/' ? '' : path}/${encodeURIComponent(name)}`
 
   return (
-    <div className="rounded bg-white shadow-sm dark:bg-gray-900 dark:text-gray-100">
-      <div className="flex items-center border-b border-gray-900/10 px-3 text-xs font-bold uppercase tracking-widest text-gray-600 dark:border-gray-500/30 dark:text-gray-400">
+    <div className="rounded-fluent-lg bg-fluent-surface-card shadow-fluent-sm dark:bg-fluent-surface-card dark:text-fluent-text-primary">
+      <div className="flex items-center border-b border-fluent-border px-3 text-xs font-bold uppercase tracking-widest text-fluent-text-secondary dark:border-fluent-border dark:text-fluent-text-secondary">
         <div className="flex-1">{`${folderChildren.length} item(s)`}</div>
-        <div className="flex p-1.5 text-gray-700 dark:text-gray-400">
+        <div className="flex p-1.5 text-fluent-text-secondary dark:text-fluent-text-secondary">
           <Checkbox
             checked={totalSelected}
             onChange={toggleTotalSelected}
@@ -86,7 +86,7 @@ const FolderGridLayout = ({
           />
           <button
             title={'Copy selected files permalink'}
-            className="cursor-pointer rounded p-1.5 hover:bg-gray-300 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-white dark:hover:bg-gray-600 disabled:dark:text-gray-600 disabled:hover:dark:bg-gray-900"
+            className="cursor-pointer rounded-fluent-md p-1.5 hover:bg-fluent-surface-panel disabled:cursor-not-allowed disabled:text-fluent-text-disabled disabled:hover:bg-fluent-surface dark:hover:bg-fluent-surface-panel disabled:dark:text-fluent-text-disabled disabled:hover:dark:bg-fluent-surface"
             disabled={totalSelected === 0}
             onClick={() => {
               clipboard.copy(handleSelectedPermalink(getBaseUrl()))
@@ -100,7 +100,7 @@ const FolderGridLayout = ({
           ) : (
             <button
               title={'Download selected files'}
-              className="cursor-pointer rounded p-1.5 hover:bg-gray-300 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-white dark:hover:bg-gray-600 disabled:dark:text-gray-600 disabled:hover:dark:bg-gray-900"
+              className="cursor-pointer rounded-fluent-md p-1.5 hover:bg-fluent-surface-panel disabled:cursor-not-allowed disabled:text-fluent-text-disabled disabled:hover:bg-fluent-surface dark:hover:bg-fluent-surface-panel disabled:dark:text-fluent-text-disabled disabled:hover:dark:bg-fluent-surface"
               disabled={totalSelected === 0}
               onClick={handleSelectedDownload}
             >
@@ -114,14 +114,14 @@ const FolderGridLayout = ({
         {folderChildren.map((c: OdFolderChildren) => (
           <div
             key={c.id}
-            className="group relative overflow-hidden rounded transition-all duration-100 hover:bg-gray-100 dark:hover:bg-gray-850"
+            className="group relative overflow-hidden rounded-fluent-lg transition-all duration-100 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
           >
-            <div className="absolute right-0 top-0 z-10 m-1 rounded bg-white/50 py-0.5 opacity-0 transition-all duration-100 group-hover:opacity-100 dark:bg-gray-900/50">
+            <div className="absolute right-0 top-0 z-10 m-1 rounded-fluent-md bg-fluent-surface-card/50 py-0.5 opacity-0 transition-all duration-100 group-hover:opacity-100 dark:bg-fluent-surface-card/50">
               {c.folder ? (
                 <div>
                   <span
                     title={'Copy folder permalink'}
-                    className="cursor-pointer rounded px-1.5 py-1 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    className="cursor-pointer rounded-fluent-md px-1.5 py-1 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
                     onClick={() => {
                       clipboard.copy(`${getBaseUrl()}${getItemPath(c.name)}`)
                       toast('Copied folder permalink.', { icon: '👌' })
@@ -134,7 +134,7 @@ const FolderGridLayout = ({
                   ) : (
                     <span
                       title={'Download folder'}
-                      className="cursor-pointer rounded px-1.5 py-1 hover:bg-gray-300 dark:hover:bg-gray-600"
+                      className="cursor-pointer rounded-fluent-md px-1.5 py-1 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
                       onClick={handleFolderDownload(getItemPath(c.name), c.id, c.name)}
                     >
                       <FontAwesomeIcon icon={['far', 'arrow-alt-circle-down']} />
@@ -145,7 +145,7 @@ const FolderGridLayout = ({
                 <div>
                   <span
                     title={'Copy raw file permalink'}
-                    className="cursor-pointer rounded px-1.5 py-1 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    className="cursor-pointer rounded-fluent-md px-1.5 py-1 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
                     onClick={() => {
                       clipboard.copy(
                         `${getBaseUrl()}/api/raw?path=${getItemPath(c.name)}${
@@ -159,7 +159,7 @@ const FolderGridLayout = ({
                   </span>
                   <a
                     title={'Download file'}
-                    className="cursor-pointer rounded px-1.5 py-1 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    className="cursor-pointer rounded-fluent-md px-1.5 py-1 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
                     href={`${getBaseUrl()}/api/raw?path=${getItemPath(c.name)}${
                       hashedToken ? `&odpt=${hashedToken}` : ''
                     }`}
@@ -173,7 +173,7 @@ const FolderGridLayout = ({
             <div
               className={`${
                 selected[c.id] ? 'opacity-100' : 'opacity-0'
-              } absolute left-0 top-0 z-10 m-1 rounded bg-white/50 py-0.5 group-hover:opacity-100 dark:bg-gray-900/50`}
+              } absolute left-0 top-0 z-10 m-1 rounded-fluent-md bg-fluent-surface-card/50 py-0.5 group-hover:opacity-100 dark:bg-fluent-surface-card/50`}
             >
               {!c.folder && !(c.name === '.password') && (
                 <Checkbox
