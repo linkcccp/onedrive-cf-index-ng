@@ -183,7 +183,10 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
           for await (const { meta, isFolder, error } of traverseFolder(path)) {
             if (error) continue
             if (!isFolder) {
-              files.push(meta)
+              const ext = getExtension(meta.name).toLowerCase()
+              if (['cbz', 'epub', 'pdf'].includes(ext)) {
+                files.push(meta)
+              }
             }
           }
           if (isMounted) {
@@ -247,7 +250,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     // Filtered file list helper - use flatFiles if available, otherwise fallback to current folder children
     const getFiles = () => {
       const source = loadingFlat ? folderChildren : flatFiles.length > 0 ? flatFiles : folderChildren
-      return source.filter(c => !c.folder && c.name !== '.password')
+      return source.filter(c => !c.folder && c.name !== '.password' && ['cbz', 'epub', 'pdf'].includes(getExtension(c.name).toLowerCase()))
     }
 
     // File selection
