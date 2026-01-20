@@ -336,51 +336,6 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
       handleFolderDownload,
     }
 
-    // If root path, show book grid
-    if (path === '/') {
-      // Mock data for testing
-      const mockBooks: BookMetadata[] = [
-        {
-          id: '1',
-          title: '示例书籍',
-          authors: ['作者一', '作者二'],
-          coverUrl: 'https://via.placeholder.com/160x240?text=Cover',
-          bookUrl: '/library/作者一/示例书籍/示例书籍.epub',
-          format: 'epub',
-          folderPath: '/library/作者一/示例书籍',
-        },
-        {
-          id: '2',
-          title: '另一本书',
-          authors: ['作者三'],
-          coverUrl: 'https://via.placeholder.com/160x240?text=Cover2',
-          bookUrl: '/library/作者三/另一本书/另一本书.pdf',
-          format: 'pdf',
-          folderPath: '/library/作者三/另一本书',
-        },
-      ]
-      const loading = false
-      const hasMore = false
-      const loadMore = () => {}
-      return (
-        <>
-          <Toaster />
-          <div className="rounded-fluent-lg bg-fluent-surface-card shadow-fluent-sm dark:bg-fluent-surface-card dark:text-fluent-text-primary">
-            <div className="border-b border-fluent-border px-3 py-2 text-xs font-bold uppercase tracking-widest text-fluent-text-secondary dark:border-fluent-border dark:text-fluent-text-secondary">
-              {`${mockBooks.length} book(s)`}
-            </div>
-            <div className="p-3">
-              <BookGrid books={mockBooks} hasMore={hasMore} loading={loading} loadMore={loadMore} />
-            </div>
-          </div>
-          {readmeFile && (
-            <div className="mt-4">
-              <MarkdownPreview file={readmeFile} path={path} standalone={false} />
-            </div>
-          )}
-        </>
-      )
-    }
 
     return (
       <>
