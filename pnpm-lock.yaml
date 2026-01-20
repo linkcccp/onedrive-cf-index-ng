@@ -119,6 +119,12 @@ importers:
       react-use-system-theme:
         specifier: ^1.1.1
         version: 1.1.1(react@18.2.0)
+      react-window:
+        specifier: ^2.2.5
+        version: 2.2.5(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      react-window-infinite-loader:
+        specifier: ^2.0.1
+        version: 2.0.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       redaxios:
         specifier: ^0.5.1
         version: 0.5.1
@@ -174,6 +180,9 @@ importers:
       '@types/react-syntax-highlighter':
         specifier: ^15.5.6
         version: 15.5.8
+      '@types/react-window':
+        specifier: ^2.0.0
+        version: 2.0.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       autoprefixer:
         specifier: ^10.4.13
         version: 10.4.16(postcss@8.4.31)
@@ -1395,6 +1404,10 @@ packages:
 
   '@types/react-syntax-highlighter@15.5.8':
     resolution: {integrity: sha512-GT1PLGzhF3ilGaQiCHFDShxDBb014s01MQi0nWfXJ23efjWfUrZ2i0g4tH1JGdfnIGBtQDge/k3ON3fLoAuU/w==}
+
+  '@types/react-window@2.0.0':
+    resolution: {integrity: sha512-E8hMDtImEpMk1SjswSvqoSmYvk7GEtyVaTa/GJV++FdDNuMVVEzpAClyJ0nqeKYBrMkGiyH6M1+rPLM0Nu1exQ==}
+    deprecated: This is a stub types definition. react-window provides its own type definitions, so you do not need this installed.
 
   '@types/react@18.2.14':
     resolution: {integrity: sha512-A0zjq+QN/O0Kpe30hA1GidzyFjatVvrpIvWLxD+xv67Vt91TWWgco9IvrJBkeyHm1trGaFS/FSGqPlhyeZRm0g==}
@@ -4181,6 +4194,18 @@ packages:
     peerDependencies:
       react: ^16.12.0
 
+  react-window-infinite-loader@2.0.1:
+    resolution: {integrity: sha512-+Deq2JkxfDr5N6WAwKQJLECiBARZ1yvVv9rElSXPO6yaMt3YTIs2y8TpsH67lIWGYFMnESvO6mgvETEZuCCjuw==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
+  react-window@2.2.5:
+    resolution: {integrity: sha512-6viWvPSZvVuMIe9hrl4IIZoVfO/npiqOb03m4Z9w+VihmVzBbiudUrtUqDpsWdKvd/Ai31TCR25CBcFFAUm28w==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
   react@18.2.0:
     resolution: {integrity: sha512-/3IjMdb2L9QbBdWiW5e3P2/npwMBaU9mHCSCUzNln0ZCYbcfTsGbTJrU/kGemdH2IWmB2ioZ+zkxtmq6g09fGQ==}
     engines: {node: '>=0.10.0'}
@@ -6336,6 +6361,13 @@ snapshots:
   '@types/react-syntax-highlighter@15.5.8':
     dependencies:
       '@types/react': 18.2.14
+
+  '@types/react-window@2.0.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
+    dependencies:
+      react-window: 2.2.5(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+    transitivePeerDependencies:
+      - react
+      - react-dom
 
   '@types/react@18.2.14':
     dependencies:
@@ -9459,6 +9491,16 @@ snapshots:
   react-use-system-theme@1.1.1(react@18.2.0):
     dependencies:
       react: 18.2.0
+
+  react-window-infinite-loader@2.0.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+
+  react-window@2.2.5(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
 
   react@18.2.0:
     dependencies:
