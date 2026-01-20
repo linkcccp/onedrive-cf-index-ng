@@ -166,6 +166,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const [layout, _] = useLocalStorage('preferredLayout', layouts[1])
 
   const path = queryToPath(query)
+  console.log('FileListing query:', query, 'path:', path)
   const isRoot = path === '/'
   const { books, loading, hasMore, error: booksError, loadMore } = useInfiniteBooks(isRoot ? '/' : '')
 
@@ -231,7 +232,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   }
 
   const responses: any[] = data ? [].concat(...data) : []
-
+  console.log('FileListing debug:', { path, responses, data })
 
   const isLoadingInitialData = !data && !error
   const isLoadingMore = isLoadingInitialData || (size > 0 && data && typeof data[size - 1] === 'undefined')
@@ -239,6 +240,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const isReachingEnd = isEmpty || (data && typeof data[data.length - 1]?.next === 'undefined')
   const onlyOnePage = data && typeof data[0].next === 'undefined'
 
+  console.log('responses[0] keys:', Object.keys(responses[0]), 'has folder?', 'folder' in responses[0], 'has file?', 'file' in responses[0])
   if ('folder' in responses[0]) {
     // Expand list of API returns into flattened file data
     const folderChildren = [].concat(...responses.map(r => r.folder.value)) as OdFolderObject['value']
