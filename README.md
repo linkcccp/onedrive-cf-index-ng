@@ -37,18 +37,49 @@ _If you happen to like this project, please give it a star!_ :3
 
 ## Local Development
 
-When running locally without Cloudflare KV, the application now uses an in-memory store for OneDrive authentication tokens. This means tokens will be persisted across requests during a single development session, but will be lost when the dev server restarts.
+When running locally without Cloudflare KV, the application uses an in-memory store for OneDrive authentication tokens. This means tokens will be persisted across requests during a single development session, but will be lost when the dev server restarts.
 
-### Using Wrangler for local KV simulation
+To better simulate the production environment and persist tokens across dev server restarts, you can use a local KV namespace with persistent storage.
 
-To better simulate the production environment, you can set up a local KV namespace using Wrangler:
+### Using persistent local KV
 
-1. Ensure Wrangler is installed (already a project dependency). If not, install globally: `npm install -g wrangler` or use the local one via `npx wrangler`.
+This project includes a pre-configured `wrangler.toml` with a KV namespace binding `ONEDRIVE_CF_INDEX_KV`. The development script `pnpm run dev:kv` starts the Wrangler dev server with KV persistence enabled.
+
+1. **Start the development server with KV persistence**:
+
+   ```bash
+   pnpm run dev:kv
+   ```
+
+   This script first builds the Next.js project (`npm run build`), then starts a local Cloudflare Pages dev server using `wrangler pages dev` with the following options:
+
+   - `--kv=ONEDRIVE_CF_INDEX_KV` binds the local KV namespace to the Pages environment.
+   - `--persist-to ./.wrangler/kv-data` persists KV data to disk, allowing tokens to survive server restarts.
+   - Other flags (`--ip`, `--compatibility-flag`, `--compatibility-date`) are for compatibility with Cloudflare's Node.js runtime.
+
+   The server will serve the static build output from `.vercel/output/static`. Note that this is a **production-like** environment; you won't get Next.js hot reload. For hot reload with in-memory token store, use `pnpm run dev` instead.
+
+2. **Verify token persistence**:
+
+   - Go through the OneDrive OAuth flow in your browser (e.g., navigate to `/onedrive-oauth/step-1`).
+   - After authentication, a token will be stored in the local KV.
+   - Stop the dev server (Ctrl+C) and restart it with `pnpm run dev:kv` again.
+   - Visit a protected route or refresh the page; the token should still be available, and you won't need to re-authenticate.
+
+3. **Resetting the KV store**:
+
+   - Delete the `.wrangler/kv-data` directory to clear all persisted KV data.
+
+Alternatively, you can run the standard Next.js dev server (`pnpm run dev`) which uses the in-memory store (tokens are not persisted across restarts).
+
+### Manual Wrangler setup (optional)
+
+If you need to create a new KV namespace manually:
+
+1. Ensure Wrangler is installed (already a project dependency).
 2. Create a KV namespace locally: `npx wrangler kv:namespace create ONEDRIVE_CF_INDEX_KV --preview`.
-3. Copy the generated binding configuration (e.g., `{ binding = "ONEDRIVE_CF_INDEX_KV", id = "..." }`) and add it to a `wrangler.toml` file in the project root (if not already present).
-4. Start the local development server with KV enabled: `npx wrangler dev --local`.
-
-Alternatively, you can run the Next.js dev server as usual (`npm run dev`) and rely on the in-memory store for simplicity.
+3. Copy the generated binding configuration and update `wrangler.toml` accordingly.
+4. Start the dev server with persistence: `npx wrangler dev --local --persist-to .wrangler/kv-data`.
 
 ## Demo
 

@@ -84,3 +84,8 @@ public/workbox-*.js.map
 
 # 忽略可能由构建生成的 pagefind 索引
 public/pagefind/
+
+
+_pycache__
+
+index_metadata.py

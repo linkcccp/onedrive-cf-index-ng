@@ -19,7 +19,6 @@ const Navbar = () => {
 
   const [tokenPresent, setTokenPresent] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
-  const [isGeneratingIndex, setIsGeneratingIndex] = useState(false)
 
   const [searchOpen, setSearchOpen] = useState(false)
   const openSearchBox = () => setSearchOpen(true)
@@ -52,33 +51,6 @@ const Navbar = () => {
     setTimeout(() => {
       router.reload()
     }, 1000)
-  }
-
-  const generateIndex = async () => {
-    // [安全增强] 要求输入管理密码
-    const accessKey = window.prompt('🔐 Please enter the admin access key to generate index:')
-    if (!accessKey) return
-
-    setIsGeneratingIndex(true)
-    try {
-      const response = await fetch('/api/Linkcccp_generateIndex', {
-        headers: {
-          'x-linkcccp-access-key': accessKey
-        }
-      })
-      const data = await response.json()
-
-      if (response.ok) {
-        toast.success('Index generated successfully! 📚')
-      } else {
-        toast.error(`Failed: ${data.error}`)
-      }
-    } catch (error) {
-      toast.error('Error generating index')
-      console.error('Error:', error)
-    } finally {
-      setIsGeneratingIndex(false)
-    }
   }
 
   return (
@@ -141,21 +113,7 @@ const Navbar = () => {
               <FontAwesomeIcon icon="sign-out-alt" className="text-fluent-text-secondary" />
             </button>
           )}
-          <button
-            className="flex items-center space-x-2 rounded-fluent-md p-2 hover:bg-fluent-surface-card disabled:opacity-50"
-            onClick={generateIndex}
-            disabled={isGeneratingIndex}
-            title="Generate OneDrive file index"
-          >
-            <span className="hidden text-sm font-medium text-fluent-text-secondary md:inline-block">
-              {isGeneratingIndex ? 'Generating...' : 'Index'}
-            </span>
-            <FontAwesomeIcon
-              icon={isGeneratingIndex ? 'spinner' : 'file-alt'}
-              spin={isGeneratingIndex}
-              className={isGeneratingIndex ? 'text-fluent-primary' : 'text-fluent-text-secondary'}
-            />
-          </button>        </div>
+        </div>
       </div>
 
       <Transition appear show={isOpen} as={Fragment}>

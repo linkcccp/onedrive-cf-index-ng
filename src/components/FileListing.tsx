@@ -1,12 +1,13 @@
 import type { OdFileObject, OdFolderChildren, OdFolderObject } from '../types'
 import { ParsedUrlQuery } from 'querystring'
-import { FC, MouseEventHandler, SetStateAction, useEffect, useRef, useState } from 'react'
+import { FC, MouseEventHandler, SetStateAction, useCallback, useEffect, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import toast, { Toaster } from 'react-hot-toast'
 import emojiRegex from 'emoji-regex'
 
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
+import useSWR from 'swr'
 
 import useLocalStorage from '../utils/useLocalStorage'
 import { getPreviewType, preview } from '../utils/getPreviewType'
@@ -37,7 +38,8 @@ import DefaultPreview from './previews/DefaultPreview'
 import { PreviewContainer } from './previews/Containers'
 
 import FolderListLayout from './FolderListLayout'
-import FolderGridLayout from './FolderGridLayout'
+import Linkcccp_BookGridLayout from './Linkcccp_BookGridLayout'
+import Linkcccp_Sidebar, { SidebarFilters, filterBooks, BookMetadata } from './Linkcccp_Sidebar'
 
 // Disabling SSR for some previews
 const EPUBPreview = dynamic(() => import('./previews/EPUBPreview'), {
@@ -157,6 +159,30 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   }>({})
   const [flatFiles, setFlatFiles] = useState<OdFolderChildren[]>([])
   const [loadingFlat, setLoadingFlat] = useState(false)
+  
+  // Sidebar 状态
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarFilters, setSidebarFilters] = useState<SidebarFilters>({
+    authors: [],
+    tags: [],
+    series: [],
+    languages: [],
+    publishers: [],
+    formats: [],
+  })
+
+  // 初始挂载时，如果在移动端则默认关闭
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false)
+    }
+  }, [])
+
+  // 获取 index.json 元数据用于筛选
+  const { data: bookIndexData } = useSWR('/api/Linkcccp_bookIndex', (url: string) => fetch(url).then(res => res.json()), {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  })
 
   const router = useRouter()
   const hashedToken = getStoredToken(router.asPath)
@@ -167,6 +193,16 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const isRoot = path === '/'
 
   const { data, error, size, setSize } = useProtectedSWRInfinite(path)
+
+  // 处理筛选条件变化
+  const handleFilterChange = useCallback((filters: SidebarFilters) => {
+    setSidebarFilters(filters)
+  }, [])
+
+  // 切换 Sidebar 显示
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen(prev => !prev)
+  }, [])
 
   // Recursively fetch all files in subfolders when the current path is a folder
   useEffect(() => {
@@ -248,7 +284,26 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     // Filtered file list helper - use flatFiles if available, otherwise fallback to current folder children
     const getFiles = () => {
       const source = loadingFlat ? folderChildren : flatFiles.length > 0 ? flatFiles : folderChildren
-      return source.filter(c => !c.folder && c.name !== '.password' && ['cbz', 'epub', 'pdf'].includes(getExtension(c.name).toLowerCase()))
+      let files = source.filter(c => !c.folder && c.name !== '.password' && ['cbz', 'epub', 'pdf'].includes(getExtension(c.name).toLowerCase()))
+      
+      // 如果有筛选条件且有 index.json 数据，应用筛选
+      const hasFilters = Object.values(sidebarFilters).some(arr => arr.length > 0)
+      if (hasFilters && bookIndexData?.books) {
+        // 将 index.json 中的书籍数据转换为可筛选的格式
+        const bookMetadataMap = new Map<string, BookMetadata>()
+        for (const book of bookIndexData.books as BookMetadata[]) {
+          bookMetadataMap.set(book.name, book)
+        }
+        
+        // 根据筛选条件过滤
+        const filteredBookNames = new Set(
+          filterBooks(bookIndexData.books as BookMetadata[], sidebarFilters).map(b => b.name)
+        )
+        
+        files = files.filter(f => filteredBookNames.has(f.name))
+      }
+      
+      return files
     }
 
     // File selection
@@ -368,10 +423,20 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
 
     // Folder layout component props
     const displayChildren = getFiles()
+    
+    // 构建书籍元数据映射表
+    const bookMetadataMap = new Map<string, BookMetadata>()
+    if (bookIndexData?.books) {
+      for (const book of bookIndexData.books as BookMetadata[]) {
+        bookMetadataMap.set(book.name, book)
+      }
+    }
+    
     const folderProps = {
       toast,
       path,
       folderChildren: displayChildren,
+      bookMetadataMap,
       selected,
       toggleItemSelected,
       totalSelected,
@@ -383,17 +448,57 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
       handleFolderDownload,
     }
 
+    // 计算选中的筛选数量
+    const filterCount = Object.values(sidebarFilters).reduce((sum, arr) => sum + arr.length, 0)
+
     // If root path, show flattened file list instead of book grid
     if (isRoot) {
       return (
         <>
           <Toaster />
-          {layout.name === 'Grid' ? <FolderGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
-          {readmeFile && (
-            <div className="mt-4">
-              <MarkdownPreview file={readmeFile} path={path} standalone={false} />
+          <div className="flex">
+            {/* Sidebar */}
+            <Linkcccp_Sidebar
+              isOpen={sidebarOpen}
+              onToggle={toggleSidebar}
+              onFilterChange={handleFilterChange}
+            />
+            
+            {/* 主内容区 */}
+            <div className="flex-1 min-w-0 transition-all duration-300">
+              {/* 汉堡按钮 - 移动端和桌面端都显示 */}
+              <div className="mb-4 flex items-center gap-3">
+                <button
+                  className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  onClick={toggleSidebar}
+                  title={sidebarOpen ? "折叠筛选" : "展开筛选"}
+                >
+                  <FontAwesomeIcon icon="bars" className="h-5 w-5" />
+                  <span>图书筛选</span>
+                  {filterCount > 0 && (
+                    <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
+                      {filterCount}
+                    </span>
+                  )}
+                </button>
+                
+                {/* 显示结果数量 */}
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  共 {displayChildren.length} 本书
+                  {filterCount > 0 && bookIndexData?.total && (
+                    <span className="ml-1">（筛选自 {bookIndexData.total} 本）</span>
+                  )}
+                </span>
+              </div>
+
+              {layout.name === 'Grid' ? <Linkcccp_BookGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
+              {readmeFile && (
+                <div className="mt-4">
+                  <MarkdownPreview file={readmeFile} path={path} standalone={false} />
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </>
       );
     }
@@ -401,15 +506,50 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     return (
       <>
         <Toaster />
+        <div className="flex">
+          {/* Sidebar */}
+          <Linkcccp_Sidebar
+            isOpen={sidebarOpen}
+            onToggle={toggleSidebar}
+            onFilterChange={handleFilterChange}
+          />
+          
+          {/* 主内容区 */}
+          <div className="flex-1 min-w-0 transition-all duration-300">
+            {/* 汉堡按钮 */}
+            <div className="mb-4 flex items-center gap-3">
+            <button
+              className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              onClick={toggleSidebar}
+              title={sidebarOpen ? "折叠筛选" : "展开筛选"}
+            >
+              <FontAwesomeIcon icon="bars" className="h-5 w-5" />
+              <span>图书筛选</span>
+              {filterCount > 0 && (
+                <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
+                  {filterCount}
+                </span>
+              )}
+            </button>
+              
+              {/* 显示结果数量 */}
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                共 {displayChildren.length} 本书
+                {filterCount > 0 && bookIndexData?.total && (
+                  <span className="ml-1">（筛选自 {bookIndexData.total} 本）</span>
+                )}
+              </span>
+            </div>
 
-        {layout.name === 'Grid' ? <FolderGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
+            {layout.name === 'Grid' ? <Linkcccp_BookGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
 
-
-        {readmeFile && (
-          <div className="mt-4">
-            <MarkdownPreview file={readmeFile} path={path} standalone={false} />
+            {readmeFile && (
+              <div className="mt-4">
+                <MarkdownPreview file={readmeFile} path={path} standalone={false} />
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </>
     )
   }

@@ -1,30 +1,43 @@
 import { KVNamespace } from '@cloudflare/workers-types'
 
-// In-memory token store for development when KV is not available
-const memoryStore: {
+// 内存存储作为本地开发的 fallback
+let memoryStore: {
   accessToken?: string
-  accessTokenExpiry?: number
+  accessTokenExpiry?: number  // 绝对时间戳（毫秒）
   refreshToken?: string
 } = {}
+
+// 从环境变量初始化（用于本地开发持久化）
+if (process.env.LOCAL_ACCESS_TOKEN) {
+  memoryStore.accessToken = process.env.LOCAL_ACCESS_TOKEN
+}
+if (process.env.LOCAL_REFRESH_TOKEN) {
+  memoryStore.refreshToken = process.env.LOCAL_REFRESH_TOKEN
+}
+if (process.env.LOCAL_ACCESS_TOKEN_EXPIRY) {
+  memoryStore.accessTokenExpiry = parseInt(process.env.LOCAL_ACCESS_TOKEN_EXPIRY, 10)
+}
 
 export async function getOdAuthTokens(): Promise<{ accessToken: unknown; refreshToken: unknown }> {
   const { ONEDRIVE_CF_INDEX_KV } = process.env as unknown as { ONEDRIVE_CF_INDEX_KV: KVNamespace }
 
-  // If KV is not available (e.g., local development), use in-memory store
-  if (!ONEDRIVE_CF_INDEX_KV) {
-    console.warn('ONEDRIVE_CF_INDEX_KV is not defined. Using in-memory token store.')
-    return {
-      accessToken: memoryStore.accessToken,
-      refreshToken: memoryStore.refreshToken,
-    }
+  // If KV is available, use it (Cloudflare environment)
+  if (ONEDRIVE_CF_INDEX_KV) {
+    const accessToken = await ONEDRIVE_CF_INDEX_KV.get('access_token')
+    const refreshToken = await ONEDRIVE_CF_INDEX_KV.get('refresh_token')
+    return { accessToken, refreshToken }
   }
 
-  const accessToken = await ONEDRIVE_CF_INDEX_KV.get('access_token')
-  const refreshToken = await ONEDRIVE_CF_INDEX_KV.get('refresh_token')
+  // 检查内存中的 accessToken 是否过期
+  if (memoryStore.accessTokenExpiry && Date.now() > memoryStore.accessTokenExpiry) {
+    memoryStore.accessToken = undefined
+    memoryStore.accessTokenExpiry = undefined
+  }
 
+  console.log('Using local token store. Has refresh token:', !!memoryStore.refreshToken)
   return {
-    accessToken,
-    refreshToken,
+    accessToken: memoryStore.accessToken,
+    refreshToken: memoryStore.refreshToken,
   }
 }
 
@@ -39,15 +52,37 @@ export async function storeOdAuthTokens({
 }): Promise<void> {
   const { ONEDRIVE_CF_INDEX_KV } = process.env as unknown as { ONEDRIVE_CF_INDEX_KV: KVNamespace }
 
-  // If KV is not available (e.g., local development), use in-memory store
-  if (!ONEDRIVE_CF_INDEX_KV) {
-    console.warn('ONEDRIVE_CF_INDEX_KV is not defined. Storing tokens in memory.')
-    memoryStore.accessToken = accessToken
-    memoryStore.accessTokenExpiry = accessTokenExpiry
-    memoryStore.refreshToken = refreshToken
+  // If KV is available, use it (Cloudflare environment)
+  if (ONEDRIVE_CF_INDEX_KV) {
+    await ONEDRIVE_CF_INDEX_KV.put('access_token', accessToken, { expirationTtl: accessTokenExpiry })
+    await ONEDRIVE_CF_INDEX_KV.put('refresh_token', refreshToken)
     return
   }
 
-  await ONEDRIVE_CF_INDEX_KV.put('access_token', accessToken, { expirationTtl: accessTokenExpiry })
-  await ONEDRIVE_CF_INDEX_KV.put('refresh_token', refreshToken)
+  // Local development: store in memory
+  const expiryTimestamp = Date.now() + accessTokenExpiry * 1000
+  memoryStore = {
+    accessToken,
+    accessTokenExpiry: expiryTimestamp,
+    refreshToken,
+  }
+
+  console.log('Storing tokens in memory. Expiry:', new Date(expiryTimestamp).toISOString())
+  
+  // 尝试通过内部 API 持久化到文件（如果可用）
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    await fetch(`${baseUrl}/api/Linkcccp_local-token-store`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accessToken,
+        accessTokenExpiry: expiryTimestamp,
+        refreshToken,
+      }),
+    })
+  } catch (error) {
+    // 静默失败，至少内存中有 token
+    console.log('Could not persist tokens to file (this is normal)')
+  }
 }

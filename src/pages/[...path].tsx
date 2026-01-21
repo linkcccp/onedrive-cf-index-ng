@@ -19,7 +19,7 @@ export default function Folders() {
 
       <main className="flex w-full flex-1 flex-col bg-fluent-surface-panel">
         <Navbar />
-        <div className="mx-auto w-full max-w-6xl py-6 sm:p-6">
+        <div className="mx-auto w-full max-w-full py-6 px-2 sm:px-6">
           <nav className="mb-6 flex items-center justify-between rounded-fluent-lg bg-fluent-surface-card p-4 shadow-fluent-sm">
             <Breadcrumb query={query} />
             <SwitchLayout />
