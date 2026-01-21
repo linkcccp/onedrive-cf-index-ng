@@ -6,7 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 const HomeCrumb = () => {
   return (
     <Link href="/" className="flex items-center rounded-fluent-md p-2 hover:bg-fluent-surface-panel">
-      <FontAwesomeIcon className="h-4 w-4 text-fluent-text-secondary" icon={['far', 'home']} />
+      <FontAwesomeIcon className="h-4 w-4 text-fluent-text-secondary" icon="home" />
       <span className="ml-2 font-medium text-fluent-text-primary">{'Home'}</span>
     </Link>
   )

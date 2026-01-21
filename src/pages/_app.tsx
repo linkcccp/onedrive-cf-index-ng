@@ -27,6 +27,7 @@ import {
   faEnvelope,
   faFlag,
   faCheckCircle,
+  faSquare,
 } from '@fortawesome/free-regular-svg-icons'
 import {
   faSearch,
@@ -57,6 +58,16 @@ import {
   faThList,
   faHome,
   faLanguage,
+  faBars,
+  faTimes,
+  faUser,
+  faTags,
+  faGlobe,
+  faBuilding,
+  faFile as faFileSolid,
+  faCheckSquare,
+  faSpinner,
+  faTimesCircle,
 } from '@fortawesome/free-solid-svg-icons'
 import * as Icons from '@fortawesome/free-brands-svg-icons'
 
@@ -115,6 +126,17 @@ library.add(
   faThList,
   faLanguage,
   faPen,
+  faBars,
+  faTimes,
+  faUser,
+  faTags,
+  faGlobe,
+  faBuilding,
+  faFileSolid,
+  faCheckSquare,
+  faSpinner,
+  faTimesCircle,
+  faSquare,
   ...iconList
 )
 

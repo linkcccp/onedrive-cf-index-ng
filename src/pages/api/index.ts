@@ -26,7 +26,10 @@ export function encodePath(path: string): string {
     return ''
   }
   encodedPath = encodedPath.replace(/\/$/, '')
-  return `:${encodeURIComponent(encodedPath)}`
+
+  // Encode each segment of the path separately, preserving the slashes
+  const pathSegments = encodedPath.split('/').map(segment => encodeURIComponent(segment))
+  return `:${pathSegments.join('/')}`
 }
 
 /**
@@ -258,7 +261,7 @@ export default async function handler(req: NextRequest): Promise<Response> {
     return NextResponse.json({ file: identityData })
   } catch (error: any) {
     return new Response(JSON.stringify({ error: error?.response?.data ?? 'Internal server error.' }), {
-      status: error?.response?.code ?? 500,
+      status: error?.response?.status ?? 500,
     })
   }
 }
