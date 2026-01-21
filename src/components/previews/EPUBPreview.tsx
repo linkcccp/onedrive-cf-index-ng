@@ -4,7 +4,7 @@ import { FC, useEffect, useRef, useState } from 'react'
 import { ReactReader } from 'react-reader'
 import { useRouter } from 'next/router'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faBookOpen, faFileAlt } from '@fortawesome/free-solid-svg-icons'
+import { faBookOpen, faFileAlt, faSyncAlt } from '@fortawesome/free-solid-svg-icons'
 
 import Loading from '../Loading'
 import DownloadButtonGroup from '../DownloadBtnGtoup'
@@ -80,6 +80,14 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     localStorage.setItem(storageKey, cfiStr)
   }
 
+  // Linkcccp: 重置进度功能，用于修复 "No Section Found" 报错
+  const resetLocation = () => {
+    localStorage.removeItem(storageKey)
+    setLocation(undefined)
+    // 强制重新渲染组件以应用更改
+    window.location.reload()
+  }
+
   if (loading || !blobUrl) {
     return (
       <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
@@ -130,8 +138,16 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         className="flex w-full flex-col rounded bg-white dark:bg-gray-900 md:p-3"
         style={{ height: '85vh' }}
       >
-        {/* Linkcccp: 页面模式切换按钮 */}
-        <div className="mb-2 flex justify-end px-2">
+        {/* Linkcccp: 页面模式切换与重置按钮 */}
+        <div className="mb-2 flex justify-end gap-2 px-2">
+          <button
+            onClick={resetLocation}
+            title="如果页面空白或报错，请尝试重置进度"
+            className="flex items-center gap-2 rounded bg-orange-100 px-3 py-1.5 text-sm font-medium text-orange-700 transition-colors hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50"
+          >
+            <FontAwesomeIcon icon={faSyncAlt} />
+            <span>重置进度</span>
+          </button>
           <button
             onClick={() => setIsSinglePage(!isSinglePage)}
             className="flex items-center gap-2 rounded bg-gray-100 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
