@@ -1,22 +1,72 @@
 import type { OdFolderChildren } from '../types'
 
 import Link from 'next/link'
-import { FC } from 'react'
+import { FC, useState, useEffect } from 'react'
 import { useClipboard } from 'use-clipboard-copy'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
 import { getBaseUrl } from '../utils/getBaseUrl'
+import { extractCBZCover, revokeCBZCoverUrl } from '../utils/Linkcccp_CBZCover'
 import { humanFileSize, formatModifiedDateTime } from '../utils/fileDetails'
 
 import { Downloading, Checkbox, ChildIcon, ChildName } from './FileListing'
 import { getStoredToken } from '../utils/protectedRouteHandler'
 
-const FileListItem: FC<{ fileContent: OdFolderChildren }> = ({ fileContent: c }) => {
+const FileListItem: FC<{ fileContent: OdFolderChildren; path: string; hashedToken?: string | null }> = ({ fileContent: c, path, hashedToken }) => {
+  const isCBZ = /\.cbz$/i.test(c.name)
+  const cleanPath = path.replace(/\/$/, '')
+  const [coverUrl, setCoverUrl] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (!isCBZ) return
+    if (coverUrl) return
+
+    const doExtract = async () => {
+      setExtracting(true)
+      try {
+        const fileKey = c.id || `${cleanPath}/${c.name}`
+        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+        const url = await extractCBZCover(fileKey, c.lastModifiedDateTime, downloadUrl)
+        if (!active) return
+        if (url) setCoverUrl(url)
+      } catch (err) {
+        console.error('Failed to extract CBZ cover in list:', err)
+      } finally {
+        if (active) setExtracting(false)
+      }
+    }
+
+    doExtract()
+
+    return () => {
+      active = false
+      if (coverUrl) revokeCBZCoverUrl(coverUrl)
+    }
+  }, [isCBZ, coverUrl, c.id, c.name, c.lastModifiedDateTime, cleanPath, hashedToken])
+
   return (
     <div className="grid cursor-pointer grid-cols-10 items-center space-x-2 px-3 py-2.5">
       <div className="col-span-10 flex items-center space-x-2 truncate md:col-span-6" title={c.name}>
-        <div className="w-5 flex-shrink-0 text-center">
-          <ChildIcon child={c} />
+        <div className="w-12 flex-shrink-0 text-center">
+          {isCBZ ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <div className="h-16 w-12 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
+              {coverUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coverUrl} alt={c.name} className="h-full w-full object-cover object-center" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-gray-400">
+                  {extracting ? <span className="animate-spin">⏳</span> : <FontAwesomeIcon icon="book" />}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-5 text-center">
+              <ChildIcon child={c} />
+            </div>
+          )}
         </div>
         <ChildName name={c.name} folder={Boolean(c.folder)} />
       </div>
@@ -110,7 +160,7 @@ const FolderListLayout = ({
             passHref
             className="col-span-12 md:col-span-10"
           >
-            <FileListItem fileContent={c} />
+            <FileListItem fileContent={c} path={path} hashedToken={hashedToken} />
           </Link>
 
           {c.folder ? (
