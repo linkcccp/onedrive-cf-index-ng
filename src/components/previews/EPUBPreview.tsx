@@ -22,7 +22,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
 
   const [loading, setLoading] = useState(true)
   const [downloadProgress, setDownloadProgress] = useState(0)
-  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [data, setData] = useState<ArrayBuffer | null>(null)
 
   // Linkcccp: 是否单页显示 (默认开启)
   const [isSinglePage, setIsSinglePage] = useState(true)
@@ -30,7 +30,6 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   // Linkcccp: 离线缓存加载逻辑
   useEffect(() => {
     let active = true
-    let currentBlobUrl: string | null = null
 
     const loadFile = async () => {
       try {
@@ -46,11 +45,8 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         )
 
         if (active) {
-          // Linkcccp: 显式指定 MIME 类型，防止 epub.js 解析失败
-          const epubBlob = new Blob([blob], { type: 'application/epub+zip' })
-          const url = URL.createObjectURL(epubBlob)
-          currentBlobUrl = url
-          setBlobUrl(url)
+          const buffer = await blob.arrayBuffer()
+          setData(buffer)
           setLoading(false)
         }
       } catch (e) {
@@ -61,7 +57,6 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     loadFile()
     return () => {
       active = false
-      if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl)
     }
   }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
 
@@ -82,7 +77,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     localStorage.setItem(storageKey, cfiStr)
   }
 
-  if (loading || !blobUrl) {
+  if (loading || !data) {
     return (
       <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
         <Loading loadingText={`Downloading EPUB ${downloadProgress}% ...`} />
@@ -93,18 +88,8 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   // Fix for not valid epub files according to
   // https://github.com/gerhardsletten/react-reader/issues/33#issuecomment-673964947
   const fixEpub = rendition => {
-    // 1. 修复路径问题
-    const spineGet = rendition.book.spine.get.bind(rendition.book.spine)
-    rendition.book.spine.get = function (target: string) {
-      let t = spineGet(target)
-      while (t == null && target.startsWith('../')) {
-        target = target.substring(3)
-        t = spineGet(target)
-      }
-      return t
-    }
-
-    // 新增: 注册鼠标滚轮事件监听
+    // Linkcccp: 移除原有的 spine.get 拦截逻辑，该逻辑可能导致部分标准电子书显示空白
+    // 仅保留鼠标滚轮翻页功能
     rendition.hooks.content.register(contents => {
       const el = contents.document.documentElement
       if (el) {
@@ -145,19 +130,16 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         <div className="relative w-full flex-1 overflow-hidden">
           <ReactReader
             key={isSinglePage ? 'single' : 'double'} // Linkcccp: 切换时强制重新渲染，确保排版刷新
-            url={blobUrl}
+            url={data}
             getRendition={rendition => fixEpub(rendition)}
             loadingView={<Loading loadingText="Parsing EPUB..." />}
             location={location}
             locationChanged={onLocationChange}
             epubInitOptions={{ openAs: 'epub' }}
             swipeable={true} // Linkcccp: 启用滑动翻页支持
-            // 修改此处配置以启用翻页效果
+            // 修改此处配置以提高兼容性
             epubOptions={{
-              flow: 'paginated',    // 将 'scrolled' 改为 'paginated' 以启用分页
-              manager: 'default',   // 指定默认的分页管理器
               allowPopups: true,
-              spread: isSinglePage ? 'none' : 'auto' // Linkcccp: 控制单双页显示
             }}
           />
         </div>

@@ -89,3 +89,5 @@ public/pagefind/
 _pycache__
 
 index_metadata.py
+
+*.epub
