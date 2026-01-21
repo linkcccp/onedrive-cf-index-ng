@@ -46,7 +46,9 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         )
 
         if (active) {
-          const url = URL.createObjectURL(blob)
+          // Linkcccp: 显式指定 MIME 类型，防止 epub.js 解析失败
+          const epubBlob = new Blob([blob], { type: 'application/epub+zip' })
+          const url = URL.createObjectURL(epubBlob)
           currentBlobUrl = url
           setBlobUrl(url)
           setLoading(false)
@@ -94,10 +96,9 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     // 1. 修复路径问题
     const spineGet = rendition.book.spine.get.bind(rendition.book.spine)
     rendition.book.spine.get = function (target: string) {
-      const targetStr = target as string
       let t = spineGet(target)
-      while (t == null && targetStr.startsWith('../')) {
-        target = targetStr.substring(3)
+      while (t == null && target.startsWith('../')) {
+        target = target.substring(3)
         t = spineGet(target)
       }
       return t
