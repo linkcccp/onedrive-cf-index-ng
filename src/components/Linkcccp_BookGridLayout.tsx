@@ -39,7 +39,7 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
 
   // 提取 CBZ 封面
   useEffect(() => {
-    if (!isCBZ || !brokenThumbnail) return
+    if (!isCBZ) return
     if (coverUrl) return // 已经提取过
 
     const extract = async () => {
@@ -65,13 +65,7 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
     }
 
     extract()
-    // 清理函数
-    return () => {
-      if (coverUrl) {
-        revokeCBZCoverUrl(coverUrl)
-      }
-    }
-  }, [isCBZ, brokenThumbnail, coverUrl, c.id, c.name, c.lastModifiedDateTime, cleanPath, hashedToken])
+  }, [isCBZ, coverUrl, c.id, c.name, c.lastModifiedDateTime, cleanPath, hashedToken])
 
   // 组件卸载时清理封面 URL
   useEffect(() => {
@@ -83,12 +77,9 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
   }, [coverUrl])
 
   // 决定显示的图片 URL
-  let displayUrl = thumbnailUrl
-  let displayBroken = brokenThumbnail
-  if (brokenThumbnail && coverUrl) {
-    displayUrl = coverUrl
-    displayBroken = false
-  }
+  // 对于 CBZ，优先使用提取的封面；如果提取中或失败，尝试使用缩略图
+  let displayUrl = coverUrl || thumbnailUrl
+  let displayBroken = coverUrl ? false : brokenThumbnail
 
   return (
     <div className="flex flex-col">
