@@ -58,4 +58,15 @@ module.exports = {
   // https://day.js.org/docs/en/display/format for detailed specification. The default value is ISO 8601 full datetime
   // without timezone and replacing T with space.
   datetimeFormat: 'YYYY-MM-DD HH:mm:ss',
+
+  // [OPTIONAL] Linkcccp_hiddenTags - 隐私标签配置
+  // 包含这些标签的书籍默认会被隐藏，只有输入正确密码后才能显示
+  // 标签名称需要与 index.json 中的 tags 字段匹配
+  Linkcccp_hiddenTags: ['本子'],
+
+  // Linkcccp_hiddenTagsPasswordHash - 解锁隐私内容的密码哈希
+  // 使用 SHA-256 哈希，可以在浏览器控制台运行以下命令生成：
+  // crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的密码')).then(h => console.log(Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('')))
+  // 默认密码是 "123456"
+  Linkcccp_hiddenTagsPasswordHash: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
 }

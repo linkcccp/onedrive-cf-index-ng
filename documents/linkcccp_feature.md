@@ -209,6 +209,35 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 - **渲染隔离 (Memo)**：确保单页加载不会引发整个列表的重绘。
 - **异步解码**：开启 `decoding="async"`，彻底消除快速滚动时的白屏块。
 
+#### ④ 隐私标签过滤系统 (Linkcccp_hiddenTags)
+
+- **功能名**：隐私标签隐藏与解锁
+- **涉及文件**：
+  - `config/site.config.js` - 配置隐私标签和密码哈希
+  - `src/utils/Linkcccp_hashPassword.ts` - 密码哈希与验证工具
+  - `src/components/FileListing.tsx` - 解锁按钮、密码弹窗、过滤逻辑
+- **作用**：根据 `index.json` 中的 `tags` 字段，隐藏包含指定隐私标签的书籍。只有输入正确密码才能解锁查看。
+- **配置方式**：
+  ```javascript
+  // site.config.js
+  Linkcccp_hiddenTags: ['私人收藏', '成人内容'],  // 隐私标签列表
+  Linkcccp_hiddenTagsPasswordHash: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  // 密码的 SHA-256 哈希
+  ```
+- **生成密码哈希**：在浏览器控制台运行：
+  ```javascript
+  crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的密码')).then(h =>
+    console.log(
+      Array.from(new Uint8Array(h))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+    )
+  )
+  ```
+- **特性**：
+  - 密码永久存储在 localStorage，清除浏览器数据后需重新输入
+  - 只要包含任意一个隐私标签即被隐藏
+  - 前端 SHA-256 哈希验证，不增加 OneDrive API 负担
+
 ---
 
 ### 📋 维护记录：已修复的坑

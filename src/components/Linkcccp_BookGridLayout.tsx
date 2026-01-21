@@ -6,7 +6,7 @@ import type { OdFolderChildren } from '../types'
 import type { BookMetadata } from './Linkcccp_Sidebar'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useClipboard } from 'use-clipboard-copy'
 
@@ -14,6 +14,7 @@ import { getBaseUrl } from '../utils/getBaseUrl'
 import { getStoredToken } from '../utils/protectedRouteHandler'
 import { Checkbox, Downloading } from './FileListing'
 import { getExtension } from '../utils/getFileIcon'
+import { extractCBZCover, revokeCBZCoverUrl } from '../utils/Linkcccp_CBZCover'
 
 interface BookGridItemProps {
   c: OdFolderChildren
@@ -27,21 +28,77 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
   const cleanPath = path.replace(/\/$/, '')
   const thumbnailUrl = `/api/thumbnail?path=${encodeURIComponent(cleanPath + '/' + c.name)}&size=large${hashedToken ? `&odpt=${hashedToken}` : ''}`
   const [brokenThumbnail, setBrokenThumbnail] = useState(false)
+  const [coverUrl, setCoverUrl] = useState<string | null>(null)
+  const [extractingCover, setExtractingCover] = useState(false)
 
   // 从 index.json 获取书名和作者，如果没有则用文件名
   const bookTitle = bookMeta?.title || c.name.replace(/\.(epub|cbz|pdf)$/i, '')
   const bookAuthor = bookMeta?.author || ''
   const fileExt = getExtension(c.name).toUpperCase()
+  const isCBZ = fileExt === 'CBZ'
+
+  // 提取 CBZ 封面
+  useEffect(() => {
+    if (!isCBZ || !brokenThumbnail) return
+    if (coverUrl) return // 已经提取过
+
+    const extract = async () => {
+      setExtractingCover(true)
+      try {
+        const fileKey = c.id || `${cleanPath}/${c.name}`
+        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+        const url = await extractCBZCover(
+          fileKey,
+          c.lastModifiedDateTime,
+          downloadUrl,
+          // 可选进度回调
+          undefined
+        )
+        if (url) {
+          setCoverUrl(url)
+        }
+      } catch (err) {
+        console.error('Failed to extract CBZ cover:', err)
+      } finally {
+        setExtractingCover(false)
+      }
+    }
+
+    extract()
+    // 清理函数
+    return () => {
+      if (coverUrl) {
+        revokeCBZCoverUrl(coverUrl)
+      }
+    }
+  }, [isCBZ, brokenThumbnail, coverUrl, c.id, c.name, c.lastModifiedDateTime, cleanPath, hashedToken])
+
+  // 组件卸载时清理封面 URL
+  useEffect(() => {
+    return () => {
+      if (coverUrl) {
+        revokeCBZCoverUrl(coverUrl)
+      }
+    }
+  }, [coverUrl])
+
+  // 决定显示的图片 URL
+  let displayUrl = thumbnailUrl
+  let displayBroken = brokenThumbnail
+  if (brokenThumbnail && coverUrl) {
+    displayUrl = coverUrl
+    displayBroken = false
+  }
 
   return (
     <div className="flex flex-col">
       {/* 封面区域 - 固定比例 3:4 */}
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-fluent-lg bg-gray-100 dark:bg-gray-800">
-        {!brokenThumbnail ? (
+        {!displayBroken ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             className="h-full w-full object-cover object-center transition-transform duration-300 group-hover:scale-105"
-            src={thumbnailUrl}
+            src={displayUrl}
             alt={bookTitle}
             onError={() => setBrokenThumbnail(true)}
             loading="lazy"
@@ -49,8 +106,17 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
         ) : (
           // 无封面时显示占位图标
           <div className="flex h-full w-full flex-col items-center justify-center text-gray-400 dark:text-gray-500">
-            <FontAwesomeIcon icon="book" className="mb-2 h-12 w-12" />
-            <span className="text-xs font-medium">{fileExt}</span>
+            {extractingCover ? (
+              <>
+                <FontAwesomeIcon icon="spinner" spin className="mb-2 h-12 w-12" />
+                <span className="text-xs font-medium">加载封面...</span>
+              </>
+            ) : (
+              <>
+                <FontAwesomeIcon icon="book" className="mb-2 h-12 w-12" />
+                <span className="text-xs font-medium">{fileExt}</span>
+              </>
+            )}
           </div>
         )}
         

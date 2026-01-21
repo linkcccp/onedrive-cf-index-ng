@@ -40,6 +40,13 @@ import { PreviewContainer } from './previews/Containers'
 import FolderListLayout from './FolderListLayout'
 import Linkcccp_BookGridLayout from './Linkcccp_BookGridLayout'
 import Linkcccp_Sidebar, { SidebarFilters, filterBooks, BookMetadata } from './Linkcccp_Sidebar'
+import siteConfig from '../../config/site.config'
+import {
+  isHiddenContentUnlocked,
+  setHiddenContentUnlocked,
+  verifyPassword,
+  hasHiddenTag,
+} from '../utils/Linkcccp_hashPassword'
 
 // Disabling SSR for some previews
 const EPUBPreview = dynamic(() => import('./previews/EPUBPreview'), {
@@ -171,6 +178,18 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     formats: [],
   })
 
+  // 隐私内容解锁状态
+  const [hiddenContentUnlocked, setHiddenUnlocked] = useState(false)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [verifying, setVerifying] = useState(false)
+
+  // 初始化时检查是否已解锁
+  useEffect(() => {
+    setHiddenUnlocked(isHiddenContentUnlocked())
+  }, [])
+
   // 初始挂载时，如果在移动端则默认关闭
   useEffect(() => {
     if (window.innerWidth < 1024) {
@@ -202,6 +221,42 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   // 切换 Sidebar 显示
   const toggleSidebar = useCallback(() => {
     setSidebarOpen(prev => !prev)
+  }, [])
+
+  // 处理密码验证
+  const handlePasswordSubmit = useCallback(async () => {
+    if (!passwordInput.trim()) {
+      setPasswordError('请输入密码')
+      return
+    }
+    setVerifying(true)
+    setPasswordError('')
+    try {
+      const isValid = await verifyPassword(
+        passwordInput,
+        (siteConfig as any).Linkcccp_hiddenTagsPasswordHash || ''
+      )
+      if (isValid) {
+        setHiddenContentUnlocked(true)
+        setHiddenUnlocked(true)
+        setShowPasswordModal(false)
+        setPasswordInput('')
+        toast.success('解锁成功！隐藏内容已显示')
+      } else {
+        setPasswordError('密码错误')
+      }
+    } catch (err) {
+      setPasswordError('验证失败，请重试')
+    } finally {
+      setVerifying(false)
+    }
+  }, [passwordInput])
+
+  // 锁定隐私内容
+  const handleLockContent = useCallback(() => {
+    setHiddenContentUnlocked(false)
+    setHiddenUnlocked(false)
+    toast.success('已重新锁定隐藏内容')
   }, [])
 
   // Recursively fetch all files in subfolders when the current path is a folder
@@ -301,6 +356,19 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
         )
         
         files = files.filter(f => filteredBookNames.has(f.name))
+      }
+
+      // 隐私标签过滤：如果未解锁，隐藏包含隐私标签的文件
+      const hiddenTags = (siteConfig as any).Linkcccp_hiddenTags || []
+      if (hiddenTags.length > 0 && !hiddenContentUnlocked && bookIndexData?.books) {
+        const bookMetaMap = new Map<string, BookMetadata>()
+        for (const book of bookIndexData.books as BookMetadata[]) {
+          bookMetaMap.set(book.name, book)
+        }
+        files = files.filter(f => {
+          const meta = bookMetaMap.get(f.name)
+          return !hasHiddenTag(meta?.tags, hiddenTags)
+        })
       }
       
       return files
@@ -451,11 +519,96 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     // 计算选中的筛选数量
     const filterCount = Object.values(sidebarFilters).reduce((sum, arr) => sum + arr.length, 0)
 
+    // 检查是否有隐私标签配置
+    const hiddenTags = (siteConfig as any).Linkcccp_hiddenTags || []
+    const hasHiddenTagsConfig = hiddenTags.length > 0
+
+    // 密码弹窗组件
+    const PasswordModal = () => (
+      showPasswordModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-sm rounded-fluent-xl bg-white p-6 shadow-fluent-lg dark:bg-gray-800">
+            <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-800 dark:text-gray-100">
+              <FontAwesomeIcon icon="lock" className="mr-2 h-5 w-5 text-amber-500" />
+              解锁隐藏内容
+            </h3>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+              请输入密码以查看包含隐私标签的内容
+            </p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              placeholder="请输入密码"
+              className="mb-2 w-full rounded-fluent-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              autoFocus
+            />
+            {passwordError && (
+              <p className="mb-3 text-sm text-red-500">{passwordError}</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false)
+                  setPasswordInput('')
+                  setPasswordError('')
+                }}
+                className="rounded-fluent-lg px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                取消
+              </button>
+              <button
+                onClick={handlePasswordSubmit}
+                disabled={verifying}
+                className="flex items-center rounded-fluent-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:opacity-50"
+              >
+                {verifying ? (
+                  <>
+                    <FontAwesomeIcon icon="spinner" spin className="mr-2 h-4 w-4" />
+                    验证中...
+                  </>
+                ) : (
+                  '确认'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    )
+
+    // 解锁按钮组件
+    const UnlockButton = () => (
+      hasHiddenTagsConfig && (
+        hiddenContentUnlocked ? (
+          <button
+            onClick={handleLockContent}
+            className="flex items-center gap-2 rounded-fluent-lg bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700 shadow-fluent-sm transition-all hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+            title="点击重新锁定隐藏内容"
+          >
+            <FontAwesomeIcon icon="lock-open" className="h-4 w-4" />
+            <span>已解锁</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            className="flex items-center gap-2 rounded-fluent-lg bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-700 shadow-fluent-sm transition-all hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+            title="输入密码解锁隐藏内容"
+          >
+            <FontAwesomeIcon icon="lock" className="h-4 w-4" />
+            <span>解锁</span>
+          </button>
+        )
+      )
+    )
+
     // If root path, show flattened file list instead of book grid
     if (isRoot) {
       return (
         <>
           <Toaster />
+          <PasswordModal />
           <div className="flex">
             {/* Sidebar */}
             <Linkcccp_Sidebar
@@ -467,7 +620,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
             {/* 主内容区 */}
             <div className="flex-1 min-w-0 transition-all duration-300">
               {/* 汉堡按钮 - 移动端和桌面端都显示 */}
-              <div className="mb-4 flex items-center gap-3">
+              <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
                   className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                   onClick={toggleSidebar}
@@ -481,6 +634,9 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
                     </span>
                   )}
                 </button>
+
+                {/* 解锁按钮 */}
+                <UnlockButton />
                 
                 {/* 显示结果数量 */}
                 <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -506,6 +662,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     return (
       <>
         <Toaster />
+        <PasswordModal />
         <div className="flex">
           {/* Sidebar */}
           <Linkcccp_Sidebar
@@ -517,7 +674,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
           {/* 主内容区 */}
           <div className="flex-1 min-w-0 transition-all duration-300">
             {/* 汉堡按钮 */}
-            <div className="mb-4 flex items-center gap-3">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
             <button
               className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               onClick={toggleSidebar}
@@ -531,6 +688,9 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
                 </span>
               )}
             </button>
+
+            {/* 解锁按钮 */}
+            <UnlockButton />
               
               {/* 显示结果数量 */}
               <span className="text-sm text-gray-500 dark:text-gray-400">
