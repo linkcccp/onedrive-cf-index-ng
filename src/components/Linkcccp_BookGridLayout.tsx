@@ -23,9 +23,9 @@ interface BookGridItemProps {
 
 const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
   const hashedToken = getStoredToken(path)
-  // 使用 thumbnail API 获取封面，降低尺寸为 medium 以提高成功率
+  // 使用 thumbnail API 获取封面，默认使用 large 尺寸以保证清晰度
   const cleanPath = path.replace(/\/$/, '')
-  const thumbnailUrl = `/api/thumbnail?path=${encodeURIComponent(cleanPath + '/' + c.name)}&size=medium${hashedToken ? `&odpt=${hashedToken}` : ''}`
+  const thumbnailUrl = `/api/thumbnail?path=${encodeURIComponent(cleanPath + '/' + c.name)}&size=large${hashedToken ? `&odpt=${hashedToken}` : ''}`
   const [brokenThumbnail, setBrokenThumbnail] = useState(false)
 
   // 从 index.json 获取书名和作者，如果没有则用文件名
