@@ -22,7 +22,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
 
   const [loading, setLoading] = useState(true)
   const [downloadProgress, setDownloadProgress] = useState(0)
-  const [data, setData] = useState<ArrayBuffer | null>(null)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
 
   // Linkcccp: 是否单页显示 (默认开启)
   const [isSinglePage, setIsSinglePage] = useState(true)
@@ -30,6 +30,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   // Linkcccp: 离线缓存加载逻辑
   useEffect(() => {
     let active = true
+    let currentBlobUrl: string | null = null
 
     const loadFile = async () => {
       try {
@@ -45,8 +46,9 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         )
 
         if (active) {
-          const buffer = await blob.arrayBuffer()
-          setData(buffer)
+          const url = URL.createObjectURL(blob)
+          currentBlobUrl = url
+          setBlobUrl(url)
           setLoading(false)
         }
       } catch (e) {
@@ -57,6 +59,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     loadFile()
     return () => {
       active = false
+      if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl)
     }
   }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
 
@@ -77,7 +80,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     localStorage.setItem(storageKey, cfiStr)
   }
 
-  if (loading || !data) {
+  if (loading || !blobUrl) {
     return (
       <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
         <Loading loadingText={`Downloading EPUB ${downloadProgress}% ...`} />
@@ -88,8 +91,19 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   // Fix for not valid epub files according to
   // https://github.com/gerhardsletten/react-reader/issues/33#issuecomment-673964947
   const fixEpub = rendition => {
-    // Linkcccp: 移除原有的 spine.get 拦截逻辑，该逻辑可能导致部分标准电子书显示空白
-    // 仅保留鼠标滚轮翻页功能
+    // 1. 修复路径问题 (Linkcccp: 修复了原版的死循环 Bug)
+    const spineGet = rendition.book.spine.get.bind(rendition.book.spine)
+    rendition.book.spine.get = function (target: string | number) {
+      let t = spineGet(target)
+      let currentTarget = target
+      while (t == null && typeof currentTarget === 'string' && currentTarget.startsWith('../')) {
+        currentTarget = currentTarget.substring(3)
+        t = spineGet(currentTarget)
+      }
+      return t
+    }
+
+    // 新增: 注册鼠标滚轮事件监听
     rendition.hooks.content.register(contents => {
       const el = contents.document.documentElement
       if (el) {
@@ -130,7 +144,7 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
         <div className="relative w-full flex-1 overflow-hidden">
           <ReactReader
             key={isSinglePage ? 'single' : 'double'} // Linkcccp: 切换时强制重新渲染，确保排版刷新
-            url={data}
+            url={blobUrl}
             getRendition={rendition => fixEpub(rendition)}
             loadingView={<Loading loadingText="Parsing EPUB..." />}
             location={location}
@@ -139,7 +153,10 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
             swipeable={true} // Linkcccp: 启用滑动翻页支持
             // 修改此处配置以提高兼容性
             epubOptions={{
+              flow: 'paginated',
+              manager: 'default',
               allowPopups: true,
+              spread: isSinglePage ? 'none' : 'auto'
             }}
           />
         </div>
