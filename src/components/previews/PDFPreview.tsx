@@ -9,9 +9,11 @@ import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_UniversalCache'
 
 const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
   const { asPath } = useRouter()
-  const hashedToken = getStoredToken(asPath)
+  const cleanPath = asPath.split('?')[0]
+  const hashedToken = getStoredToken(cleanPath)
 
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
 
@@ -22,8 +24,9 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
     const loadFile = async () => {
       try {
         setLoading(true)
-        const fileKey = file.id || asPath
-        const downloadUrl = `/api/raw?path=${asPath}${hashedToken ? '&odpt=' + hashedToken : ''}`
+        setError(null)
+        const fileKey = file.id || cleanPath
+        const downloadUrl = `/api/raw?path=${cleanPath}${hashedToken ? '&odpt=' + hashedToken : ''}`
 
         const blob = await Linkcccp_downloadAndCache(
           fileKey,
@@ -33,14 +36,19 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
         )
 
         if (active) {
-          const url = URL.createObjectURL(blob)
+          // 强制指定 Blob 类型为 application/pdf，确保浏览器正确识别
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' })
+          const url = URL.createObjectURL(pdfBlob)
           currentBlobUrl = url
           setBlobUrl(url)
           setLoading(false)
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error('PDF Load Error', e)
-        if (active) setLoading(false)
+        if (active) {
+          setError(e.message || 'Failed to load PDF')
+          setLoading(false)
+        }
       }
     }
     loadFile()
@@ -48,17 +56,9 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
       active = false
       if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl)
     }
-  }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
+  }, [cleanPath, file.id, file.lastModifiedDateTime, hashedToken])
 
-  // 原有逻辑作为 fallback 或者不用
-  /*
-  const pdfPath = encodeURIComponent(
-    `${getBaseUrl()}/api/raw?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
-  )
-  const url = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${pdfPath}`
-  */
-
-  if (loading || !blobUrl) {
+  if (loading) {
     return (
       <div className="flex w-full items-center justify-center rounded bg-white p-4" style={{ height: '50vh' }}>
         <Loading loadingText={`Downloading PDF ${downloadProgress}% ...`} />
@@ -66,10 +66,24 @@ const PDFEmbedPreview: React.FC<{ file: any }> = ({ file }) => {
     )
   }
 
+  if (error) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center rounded bg-white p-10 dark:bg-gray-900" style={{ height: '50vh' }}>
+        <div className="mb-4 text-red-500">预览加载失败: {error}</div>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 transition-colors"
+        >
+          重试
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="w-full overflow-hidden rounded" style={{ height: '90vh' }}>
-        <iframe src={blobUrl} frameBorder="0" width="100%" height="100%"></iframe>
+        <iframe src={blobUrl!} frameBorder="0" width="100%" height="100%"></iframe>
       </div>
 
       <DownloadBtnContainer>

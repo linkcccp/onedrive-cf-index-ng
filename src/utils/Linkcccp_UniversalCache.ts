@@ -80,7 +80,8 @@ export const Linkcccp_downloadAndCache = async (
         }
     }
 
-    const blob = new Blob(chunks)
+    const contentType = response.headers.get('content-type') || ''
+    const blob = new Blob(chunks, { type: contentType })
 
     // 3. 写入缓存
     await Linkcccp_saveToCache(fileKey, blob, fileLastModified)

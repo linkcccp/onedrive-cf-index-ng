@@ -57,6 +57,8 @@ const Linkcccp_CBZPreview: React.FC<{
     file: OdFileObject
 }> = ({ file }) => {
     const { asPath } = useRouter()
+    const cleanPath = asPath.split('?')[0]
+
     const [isLoading, setIsLoading] = useState(true)
     const [downloadProgress, setDownloadProgress] = useState(0) // 下载进度 0-100
     const [error, setError] = useState<string>('')
@@ -88,7 +90,7 @@ const Linkcccp_CBZPreview: React.FC<{
     }
 
     // --- 进度记忆逻辑 ---
-    const getStorageKey = useCallback(() => `cbz-progress-${file.id || file.name}`, [file.id, file.name])
+    const getStorageKey = useCallback(() => `cbz-progress-${file.id || cleanPath}`, [file.id, cleanPath])
 
     const saveProgress = useCallback(
         (scrollTop: number) => {
@@ -162,7 +164,7 @@ const Linkcccp_CBZPreview: React.FC<{
                 setError('')
                 setDownloadProgress(0)
 
-                const fileKey = file.id || asPath
+                const fileKey = file.id || cleanPath
                 const cached = await Linkcccp_getFromCache(fileKey)
                 let fullBlob: Blob
 
@@ -177,8 +179,8 @@ const Linkcccp_CBZPreview: React.FC<{
                     zipModuleRef.current = zip
                     zip.configure({ useWebWorkers: true })
 
-                    const hashedToken = getStoredToken(asPath)
-                    const requestUrl = `/api/raw?path=${asPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+                    const hashedToken = getStoredToken(cleanPath)
+                    const requestUrl = `/api/raw?path=${cleanPath}${hashedToken ? `&odpt=${hashedToken}` : ''}`
                     const prefetch = await fetch(requestUrl, { method: 'GET', headers: { Range: 'bytes=0-0' } })
                     if (!prefetch.ok && prefetch.status !== 206) throw new Error(`无法连接网盘: ${prefetch.status}`)
                     const directUrl = prefetch.url

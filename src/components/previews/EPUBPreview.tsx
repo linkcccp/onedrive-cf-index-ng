@@ -15,7 +15,8 @@ import { Linkcccp_downloadAndCache } from '../../utils/Linkcccp_UniversalCache'
 
 const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
   const { asPath } = useRouter()
-  const hashedToken = getStoredToken(asPath)
+  const cleanPath = asPath.split('?')[0]
+  const hashedToken = getStoredToken(cleanPath)
 
   // Linkcccp: 用于控制滚轮翻页频率的节流计时器
   const lastWheelTime = useRef(0)
@@ -35,8 +36,8 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
     const loadFile = async () => {
       try {
         setLoading(true)
-        const fileKey = file.id || asPath
-        const downloadUrl = `/api/raw?path=${asPath}${hashedToken ? '&odpt=' + hashedToken : ''}`
+        const fileKey = file.id || cleanPath
+        const downloadUrl = `/api/raw?path=${cleanPath}${hashedToken ? '&odpt=' + hashedToken : ''}`
 
         const blob = await Linkcccp_downloadAndCache(
           fileKey,
@@ -61,10 +62,10 @@ const EPUBPreview: FC<{ file: OdFileObject }> = ({ file }) => {
       active = false
       if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl)
     }
-  }, [asPath, file.id, file.lastModifiedDateTime, hashedToken])
+  }, [cleanPath, file.id, file.lastModifiedDateTime, hashedToken])
 
   // Linkcccp: 历史进度存取逻辑
-  const storageKey = `epub-progress-${file.id || asPath}`
+  const storageKey = `epub-progress-${file.id || cleanPath}`
   const [location, setLocation] = useState<string>()
 
   // 加载初始进度
