@@ -69,10 +69,10 @@ export async function storeOdAuthTokens({
 
   console.log('Storing tokens in memory. Expiry:', new Date(expiryTimestamp).toISOString())
   
-  // 尝试通过内部 API 持久化到文件（如果可用）
+  // 尝试通过独立的本地 Token 服务器持久化到文件
+  // 服务器运行在 localhost:3001，由 Linkcccp_local-token-server.js 提供
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-    await fetch(`${baseUrl}/api/Linkcccp_local-token-store`, {
+    await fetch('http://localhost:3001/api/local-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,8 +81,9 @@ export async function storeOdAuthTokens({
         refreshToken,
       }),
     })
+    console.log('Token persisted to local file via token server')
   } catch (error) {
     // 静默失败，至少内存中有 token
-    console.log('Could not persist tokens to file (this is normal)')
+    console.log('Could not persist tokens to file (token server may not be running)')
   }
 }

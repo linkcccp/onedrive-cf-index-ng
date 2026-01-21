@@ -33,35 +33,35 @@ onedrive-cf-index-ng 是一个基于 Next.js 构建的 OneDrive 公共目录列�
 
 ## 2. 核心功能定位表
 
-| 功能名称            | 涉及文件路径                                         | 核心逻辑简述                                                               |
-| ------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| **文件/文件夹列表** | FileListing.tsx                                      | 主要列表组件，根据 API 响应渲染文件夹或文件，支持分页加载                  |
+| 功能名称             | 涉及文件路径                                         | 核心逻辑简述                                                               |
+| -------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| **文件/文件夹列表**  | FileListing.tsx                                      | 主要列表组件，根据 API 响应渲染文件夹或文件，支持分页加载                  |
 | **图书竖版网格布局** | Linkcccp_BookGridLayout.tsx                          | 以竖版封面形式展示书籍，包含封面、书名、作者信息                           |
-| **列表布局**        | FolderListLayout.tsx                                 | 以列表形式展示文件夹内容，显示文件名、修改时间、大小                       |
-| **布局切换**        | SwitchLayout.tsx                                     | 在网格和列表布局之间切换，偏好存储在 localStorage                          |
-| **文件预览**        | previews                                             | 各类文件预览组件，包括图片、视频、音频、PDF、Office、代码、Markdown 等     |
-| **视频预览**        | VideoPreview.tsx                                     | 使用 Plyr 播放器，支持字幕加载、多播放器链接                               |
-| **代码预览**        | CodePreview.tsx                                      | 使用 react-syntax-highlighter 进行语法高亮                                 |
-| **Markdown 预览**   | MarkdownPreview.tsx                                  | 支持 GFM、数学公式 (KaTeX)、代码块高亮                                     |
-| **PDF 预览**        | PDFPreview.tsx                                       | 使用 Mozilla PDF.js 在线查看器                                             |
-| **Office 预览**     | OfficePreview.tsx                                    | 使用 preview-office-docs 组件预览 Office 文档                              |
-| **默认预览**        | DefaultPreview.tsx                                   | 显示文件元信息（大小、修改时间、MIME 类型、哈希值）                        |
-| **文件下载**        | DownloadBtnGtoup.tsx                                 | 提供直接下载、复制链接、自定义链接等功能                                   |
-| **多文件下载**      | MultiFileDownloader.tsx                              | 支持批量选择文件打包下载为 ZIP                                             |
-| **文件夹下载**      | MultiFileDownloader.tsx 中的 `traverseFolder`        | 递归遍历文件夹并打包下载                                                   |
-| **搜索功能**        | SearchModal.tsx                                      | 模态框搜索界面，使用防抖处理搜索请求                                       |
-| **面包屑导航**      | Breadcrumb.tsx                                       | 显示当前路径，支持点击跳转                                                 |
-| **导航栏**          | Navbar.tsx                                           | 顶部导航，包含搜索、外部链接、登出功能                                     |
-| **受保护路由**      | Auth.tsx, protectedRouteHandler.ts                   | 密码保护文件夹，需要输入密码才能访问                                       |
-| **自定义嵌入链接**  | CustomEmbedLinkMenu.tsx                              | 生成自定义文件名的直链                                                     |
-| **OAuth 认证流程**  | onedrive-oauth                                       | 三步 OAuth 认证：检查配置 → 获取授权码 → 存储令牌                          |
-| **Token 管理**      | odAuthTokenStore.ts, index.ts                        | 自动刷新过期的 access_token                                                |
-| **文件类型判断**    | getPreviewType.ts, getFileIcon.ts                    | 根据文件扩展名判断预览类型和图标                                           |
-| **文件详情格式化**  | fileDetails.ts                                       | 文件大小人性化显示、日期格式化                                             |
-| **API 路径编码**    | index.ts 中的 `encodePath`                           | 将相对路径转换为 OneDrive API 路径格式                                     |
-| **认证路由检查**    | index.ts 中的 `checkAuthRoute`                       | 检查路径是否需要密码保护                                                   |
-| **本地开发持久化**  | Linkcccp_dev-start.js, Linkcccp_local-token-store.ts | 支持将 OAuth token 持久化到本地文件，解决开发环境重启需重复登录的问题      |
-| **图书元数据筛选**  | Linkcccp_bookIndex.ts, Linkcccp_Sidebar.tsx          | Calibre 风格的图书筛选，支持作者/标签/丛书/语言/出版商/格式多维度 AND 筛选 |
+| **列表布局**         | FolderListLayout.tsx                                 | 以列表形式展示文件夹内容，显示文件名、修改时间、大小                       |
+| **布局切换**         | SwitchLayout.tsx                                     | 在网格和列表布局之间切换，偏好存储在 localStorage                          |
+| **文件预览**         | previews                                             | 各类文件预览组件，包括图片、视频、音频、PDF、Office、代码、Markdown 等     |
+| **视频预览**         | VideoPreview.tsx                                     | 使用 Plyr 播放器，支持字幕加载、多播放器链接                               |
+| **代码预览**         | CodePreview.tsx                                      | 使用 react-syntax-highlighter 进行语法高亮                                 |
+| **Markdown 预览**    | MarkdownPreview.tsx                                  | 支持 GFM、数学公式 (KaTeX)、代码块高亮                                     |
+| **PDF 预览**         | PDFPreview.tsx                                       | 使用 Mozilla PDF.js 在线查看器                                             |
+| **Office 预览**      | OfficePreview.tsx                                    | 使用 preview-office-docs 组件预览 Office 文档                              |
+| **默认预览**         | DefaultPreview.tsx                                   | 显示文件元信息（大小、修改时间、MIME 类型、哈希值）                        |
+| **文件下载**         | DownloadBtnGtoup.tsx                                 | 提供直接下载、复制链接、自定义链接等功能                                   |
+| **多文件下载**       | MultiFileDownloader.tsx                              | 支持批量选择文件打包下载为 ZIP                                             |
+| **文件夹下载**       | MultiFileDownloader.tsx 中的 `traverseFolder`        | 递归遍历文件夹并打包下载                                                   |
+| **搜索功能**         | SearchModal.tsx                                      | 模态框搜索界面，使用防抖处理搜索请求                                       |
+| **面包屑导航**       | Breadcrumb.tsx                                       | 显示当前路径，支持点击跳转                                                 |
+| **导航栏**           | Navbar.tsx                                           | 顶部导航，包含搜索、外部链接、登出功能                                     |
+| **受保护路由**       | Auth.tsx, protectedRouteHandler.ts                   | 密码保护文件夹，需要输入密码才能访问                                       |
+| **自定义嵌入链接**   | CustomEmbedLinkMenu.tsx                              | 生成自定义文件名的直链                                                     |
+| **OAuth 认证流程**   | onedrive-oauth                                       | 三步 OAuth 认证：检查配置 → 获取授权码 → 存储令牌                          |
+| **Token 管理**       | odAuthTokenStore.ts, index.ts                        | 自动刷新过期的 access_token                                                |
+| **文件类型判断**     | getPreviewType.ts, getFileIcon.ts                    | 根据文件扩展名判断预览类型和图标                                           |
+| **文件详情格式化**   | fileDetails.ts                                       | 文件大小人性化显示、日期格式化                                             |
+| **API 路径编码**     | index.ts 中的 `encodePath`                           | 将相对路径转换为 OneDrive API 路径格式                                     |
+| **认证路由检查**     | index.ts 中的 `checkAuthRoute`                       | 检查路径是否需要密码保护                                                   |
+| **本地开发持久化**   | Linkcccp_dev-start.js, Linkcccp_local-token-store.ts | 支持将 OAuth token 持久化到本地文件，解决开发环境重启需重复登录的问题      |
+| **图书元数据筛选**   | Linkcccp_bookIndex.ts, Linkcccp_Sidebar.tsx          | Calibre 风格的图书筛选，支持作者/标签/丛书/语言/出版商/格式多维度 AND 筛选 |
 
 ---
 

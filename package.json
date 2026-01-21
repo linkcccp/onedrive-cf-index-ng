@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node Linkcccp_dev-start.js",
+    "dev:token-server": "node Linkcccp_local-token-server.js",
+    "dev:full": "concurrently \"npm run dev:token-server\" \"npm run dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
