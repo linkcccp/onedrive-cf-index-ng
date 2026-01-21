@@ -1,5 +1,4 @@
 import axios from 'axios'
-import useSWR, { SWRResponse } from 'swr'
 import { Dispatch, Fragment, SetStateAction, useState } from 'react'
 import AwesomeDebouncePromise from 'awesome-debounce-promise'
 import { useAsync } from 'react-async-hook'
@@ -9,64 +8,44 @@ import Link from 'next/link'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Dialog, Transition } from '@headlessui/react'
 
-import type { OdDriveItem, OdSearchResult } from '../types'
 import { LoadingIcon } from './Loading'
-
 import { getFileIcon } from '../utils/getFileIcon'
-import { fetcher } from '../utils/fetchWithSWR'
-import siteConfig from '../../config/site.config'
 
-/**
- * Extract the searched item's path in field 'parentReference' and convert it to the
- * absolute path
- *
- * @param path Path returned from the parentReference field of the driveItem
- * @returns The absolute path of the driveItem in the search result
- */
-function mapAbsolutePath(path: string): string {
-  // path is in the format of '/drive/root:/path/to/file', if baseDirectory is '/' then we split on 'root:',
-  // otherwise we split on the user defined 'baseDirectory'
-  const absolutePath = path.split(siteConfig.baseDirectory === '/' ? 'root:' : siteConfig.baseDirectory)
-  // path returned by the API may contain #, by doing a decodeURIComponent and then encodeURIComponent we can
-  // replace URL sensitive characters such as the # with %23
-  return absolutePath.length > 1 // solve https://github.com/spencerwooo/onedrive-vercel-index/issues/539
-    ? absolutePath[1]
-        .split('/')
-        .map(p => encodeURIComponent(decodeURIComponent(p)))
-        .join('/')
-    : ''
+// index.json 搜索结果类型
+interface IndexSearchResult {
+  id: string
+  name: string
+  path: string
+  title: string
+  author: string
+  series: string
+  tags: string
+  type: string
+  matchField: string
+  matchScore: number
 }
 
 /**
- * Implements a debounced search function that returns a promise that resolves to an array of
- * search results.
+ * Implements a debounced search function that searches index.json data
+ * 支持分词搜索，搜索书名、作者、系列、标签等字段
  *
- * @returns A react hook for a debounced async search of the drive
+ * @returns A react hook for a debounced async search
  */
-function useDriveItemSearch() {
+function useIndexSearch() {
   const [query, setQuery] = useState('')
-  const searchDriveItem = async (q: string) => {
-    const { data } = await axios.get<OdSearchResult>(`/api/search?q=${q}`)
-
-    // Map parentReference to the absolute path of the search result
-    data.map(item => {
-      item['path'] =
-        'path' in item.parentReference
-          ? // OneDrive International have the path returned in the parentReference field
-            `${mapAbsolutePath(item.parentReference.path)}/${encodeURIComponent(item.name)}`
-          : // OneDrive for Business/Education does not, so we need extra steps here
-            ''
-    })
-
+  
+  const searchIndex = async (q: string): Promise<IndexSearchResult[]> => {
+    const { data } = await axios.get<IndexSearchResult[]>(`/api/Linkcccp_search?q=${encodeURIComponent(q)}`)
     return data
   }
 
-  const debouncedDriveItemSearch = useConstant(() => AwesomeDebouncePromise(searchDriveItem, 1000))
+  const debouncedSearch = useConstant(() => AwesomeDebouncePromise(searchIndex, 500))
+  
   const results = useAsync(async () => {
     if (query.length === 0) {
       return []
     } else {
-      return debouncedDriveItemSearch(query)
+      return debouncedSearch(query)
     }
   }, [query])
 
@@ -77,89 +56,59 @@ function useDriveItemSearch() {
   }
 }
 
-function SearchResultItemTemplate({
-  driveItem,
-  driveItemPath,
-  itemDescription,
-  disabled,
-}: {
-  driveItem: OdSearchResult[number]
-  driveItemPath: string
-  itemDescription: string
-  disabled: boolean
-}) {
+/**
+ * 获取匹配字段的中文显示名
+ */
+function getMatchFieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    title: '书名',
+    author: '作者',
+    series: '系列',
+    tags: '标签',
+    name: '文件名',
+  }
+  return labels[field] || field
+}
+
+/**
+ * 搜索结果项组件 - 用于 index.json 搜索结果
+ */
+function IndexSearchResultItem({ result }: { result: IndexSearchResult }) {
   return (
     <Link
-      href={driveItemPath}
+      href={result.path}
       passHref
-      className={`flex items-center space-x-4 border-b border-gray-400/30 px-4 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-850 ${
-        disabled ? 'pointer-events-none cursor-not-allowed' : 'cursor-pointer'
-      }`}
+      className="flex items-center space-x-4 border-b border-gray-400/30 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-850 cursor-pointer"
     >
-      <FontAwesomeIcon icon={driveItem.file ? getFileIcon(driveItem.name) : ['far', 'folder']} />
-      <div>
-        <div className="text-sm font-medium leading-8">{driveItem.name}</div>
-        <div
-          className={`overflow-hidden truncate font-mono text-xs opacity-60 ${
-            itemDescription === 'Loading ...' && 'animate-pulse'
-          }`}
-        >
-          {itemDescription}
+      <FontAwesomeIcon 
+        icon={getFileIcon(result.name)} 
+        className="h-5 w-5 flex-shrink-0 text-gray-500"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium leading-6 truncate">
+          {result.title || result.name}
+        </div>
+        <div className="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
+          {result.author && (
+            <span className="truncate max-w-[150px]">{result.author}</span>
+          )}
+          {result.series && (
+            <>
+              <span>·</span>
+              <span className="truncate max-w-[100px]">{result.series}</span>
+            </>
+          )}
+          <span>·</span>
+          <span className="text-blue-500 dark:text-blue-400 flex-shrink-0">
+            匹配: {getMatchFieldLabel(result.matchField)}
+          </span>
         </div>
       </div>
+      <span className="text-xs text-gray-400 uppercase flex-shrink-0">
+        {result.type?.replace('.', '')}
+      </span>
     </Link>
   )
-}
-
-function SearchResultItemLoadRemote({ result }: { result: OdSearchResult[number] }) {
-  const { data, error }: SWRResponse<OdDriveItem, { status: number; message: any }> = useSWR(
-    [`/api/item?id=${result.id}`],
-    fetcher
-  )
-
-  if (error) {
-    return (
-      <SearchResultItemTemplate
-        driveItem={result}
-        driveItemPath={''}
-        itemDescription={typeof error.message?.error === 'string' ? error.message.error : JSON.stringify(error.message)}
-        disabled={true}
-      />
-    )
-  }
-  if (!data) {
-    return (
-      <SearchResultItemTemplate driveItem={result} driveItemPath={''} itemDescription={'Loading ...'} disabled={true} />
-    )
-  }
-
-  const driveItemPath = `${mapAbsolutePath(data.parentReference.path)}/${encodeURIComponent(data.name)}`
-  return (
-    <SearchResultItemTemplate
-      driveItem={result}
-      driveItemPath={driveItemPath}
-      itemDescription={decodeURIComponent(driveItemPath)}
-      disabled={false}
-    />
-  )
-}
-
-function SearchResultItem({ result }: { result: OdSearchResult[number] }) {
-  if (result.path === '') {
-    // path is empty, which means we need to fetch the parentReference to get the path
-    return <SearchResultItemLoadRemote result={result} />
-  } else {
-    // path is not an empty string in the search result, such that we can directly render the component as is
-    const driveItemPath = decodeURIComponent(result.path)
-    return (
-      <SearchResultItemTemplate
-        driveItem={result}
-        driveItemPath={result.path}
-        itemDescription={driveItemPath}
-        disabled={false}
-      />
-    )
-  }
 }
 
 export default function SearchModal({
@@ -169,7 +118,7 @@ export default function SearchModal({
   searchOpen: boolean
   setSearchOpen: Dispatch<SetStateAction<boolean>>
 }) {
-  const { query, setQuery, results } = useDriveItemSearch()
+  const { query, setQuery, results } = useIndexSearch()
 
   const closeSearchBox = () => {
     setSearchOpen(false)
@@ -211,7 +160,7 @@ export default function SearchModal({
                   type="text"
                   id="search-box"
                   className="w-full bg-transparent focus:outline-none focus-visible:outline-none"
-                  placeholder={'Search ...'}
+                  placeholder={'搜索书名、作者、系列、标签...'}
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                 />
@@ -224,18 +173,32 @@ export default function SearchModal({
                 {results.loading && (
                   <div className="px-4 py-12 text-center text-sm font-medium">
                     <LoadingIcon className="svg-inline--fa mr-2 inline-block h-4 w-4 animate-spin" />
-                    <span>{'Loading ...'}</span>
+                    <span>{'搜索中...'}</span>
                   </div>
                 )}
                 {results.error && (
-                  <div className="px-4 py-12 text-center text-sm font-medium">{`Error: ${results.error.message}`}</div>
+                  <div className="px-4 py-12 text-center text-sm font-medium text-red-500">
+                    {results.error.message?.includes('index.json') 
+                      ? '未找到 index.json，请先生成索引文件'
+                      : `搜索出错: ${results.error.message}`
+                    }
+                  </div>
                 )}
                 {results.result && (
                   <>
                     {results.result.length === 0 ? (
-                      <div className="px-4 py-12 text-center text-sm font-medium">{'Nothing here.'}</div>
+                      <div className="px-4 py-12 text-center text-sm font-medium text-gray-500">
+                        {query.length > 0 ? '没有找到匹配的结果' : '输入关键词开始搜索'}
+                      </div>
                     ) : (
-                      results.result.map(result => <SearchResultItem key={result.id} result={result} />)
+                      <>
+                        <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-400/30">
+                          找到 {results.result.length} 个结果
+                        </div>
+                        {results.result.map(result => (
+                          <IndexSearchResultItem key={result.id} result={result} />
+                        ))}
+                      </>
                     )}
                   </>
                 )}
