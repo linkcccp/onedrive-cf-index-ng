@@ -3,6 +3,7 @@ import { traverseFolder } from '../components/MultiFileDownloader'
 import { fetchOPFMetadata, inferOPFPath } from './Linkcccp_OPFParser'
 import { getStoredToken } from './protectedRouteHandler'
 import { getBaseUrl } from './getBaseUrl'
+import { getRawUrl, getFolderCoverUrl } from './Linkcccp_coverUtils'
 
 export interface BookMetadata {
   id: string
@@ -34,11 +35,11 @@ async function extractBookMetadata(folderPath: string, folderName: string): Prom
   const tokenQuery = hashedToken ? `&odpt=${hashedToken}` : ''
 
   // 1. Look for cover.jpg
-  const coverUrl = `${getBaseUrl()}/api/raw?path=${encodeURIComponent(folderPath)}/cover.jpg${tokenQuery}`
+  const coverUrl = getRawUrl(`${folderPath}/cover.jpg`, hashedToken)
 
   // 2. Look for metadata.opf
   const opfPath = inferOPFPath(folderPath + '/dummy.epub') // dummy file to infer folder
-  const opfUrl = `${getBaseUrl()}/api/raw?path=${encodeURIComponent(opfPath)}${tokenQuery}`
+  const opfUrl = getRawUrl(opfPath, hashedToken)
 
   let title = folderName
   let authors: string[] = []
@@ -50,7 +51,7 @@ async function extractBookMetadata(folderPath: string, folderName: string): Prom
     if (metadata.authors.length > 0) authors = metadata.authors
     if (metadata.coverPath) {
       // construct cover path relative to folder
-      coverUrlFinal = `${getBaseUrl()}/api/raw?path=${encodeURIComponent(folderPath)}/${encodeURIComponent(metadata.coverPath)}${tokenQuery}`
+      coverUrlFinal = getRawUrl(`${folderPath}/${metadata.coverPath}`, hashedToken)
     }
   } catch (e) {
     // OPF not found or error, fallback

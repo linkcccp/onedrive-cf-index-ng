@@ -6,7 +6,7 @@ import type { OdFolderChildren } from '../types'
 import type { BookMetadata } from './Linkcccp_Sidebar'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useClipboard } from 'use-clipboard-copy'
 
@@ -15,6 +15,8 @@ import { getStoredToken } from '../utils/protectedRouteHandler'
 import { Checkbox, Downloading } from './FileListing'
 import { getExtension } from '../utils/getFileIcon'
 import { extractCBZCover, revokeCBZCoverUrl } from '../utils/Linkcccp_CBZCover'
+import { getCoverUrl, getThumbnailUrl, getRawUrl } from '../utils/Linkcccp_coverUtils'
+import { getCachedCover, revokeCachedCoverUrl } from '../utils/Linkcccp_coverCache'
 
 interface BookGridItemProps {
   c: OdFolderChildren
@@ -24,18 +26,37 @@ interface BookGridItemProps {
 
 const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
   const hashedToken = getStoredToken(path)
-  // 使用 thumbnail API 获取封面，默认使用 large 尺寸以保证清晰度
   const cleanPath = path.replace(/\/$/, '')
-  const thumbnailUrl = `/api/thumbnail?path=${encodeURIComponent(cleanPath + '/' + c.name)}&size=large${
-    hashedToken ? `&odpt=${hashedToken}` : ''
-  }`
-  // 如果 index.json 中有封面路径，则使用 raw API 获取封面
-  const indexCoverUrl = bookMeta?.cover
-    ? `/api/raw?path=${encodeURIComponent(bookMeta.cover)}${hashedToken ? `&odpt=${hashedToken}` : ''}`
-    : null
   const [brokenThumbnail, setBrokenThumbnail] = useState(false)
   const [coverUrl, setCoverUrl] = useState<string | null>(null)
   const [extractingCover, setExtractingCover] = useState(false)
+
+  // 使用统一封面工具获取封面信息
+  const coverResult = useMemo(
+    () =>
+      getCoverUrl({
+        file: c,
+        bookMeta,
+        path: cleanPath,
+        hashedToken,
+      }),
+    [c, bookMeta, cleanPath, hashedToken]
+  )
+  // 决定显示的图片 URL
+  // 优先使用缓存或提取的封面（coverUrl），否则使用原始 URL
+  let displayUrl = coverResult.url
+  let displayBroken = false
+  if (coverUrl) {
+    displayUrl = coverUrl
+  }
+  // 如果封面类型是 default 或 cbzCover（未提取出封面）或 thumbnail，则可能加载失败
+  if (
+    coverResult.type === 'thumbnail' ||
+    coverResult.type === 'default' ||
+    (coverResult.type === 'cbzCover' && !coverUrl)
+  ) {
+    displayBroken = brokenThumbnail
+  }
 
   // 从 index.json 获取书名和作者，如果没有则用文件名
   const bookTitle = bookMeta?.title || c.name.replace(/\.(epub|cbz|pdf)$/i, '')
@@ -52,9 +73,7 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
       setExtractingCover(true)
       try {
         const fileKey = c.id || `${cleanPath}/${c.name}`
-        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${
-          hashedToken ? `&odpt=${hashedToken}` : ''
-        }`
+        const downloadUrl = getRawUrl(`${cleanPath}/${c.name}`, hashedToken)
         const url = await extractCBZCover(
           fileKey,
           c.lastModifiedDateTime,
@@ -75,19 +94,42 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
     extract()
   }, [isCBZ, coverUrl, c.id, c.name, c.lastModifiedDateTime, cleanPath, hashedToken])
 
+  // 缓存非 CBZ 封面
+  useEffect(() => {
+    if (coverResult.type === 'cbzCover') return // 由另一个效果处理
+    if (!coverResult.url) return // 没有可缓存的 URL
+    if (coverUrl && coverUrl.startsWith('blob:')) return // 已经有 blob URL（可能是 CBZ 提取的）
+
+    let active = true
+    const cacheKey = `cover-${coverResult.type}-${c.id || c.name}`
+    const lastModified = c.lastModifiedDateTime || ''
+
+    const fetchCache = async () => {
+      try {
+        const blobUrl = await getCachedCover(coverResult.url, cacheKey, lastModified)
+        if (active) {
+          setCoverUrl(blobUrl)
+        }
+      } catch (error) {
+        console.error('Failed to cache cover:', error)
+        // 如果缓存失败，仍使用原始 URL，不设置 coverUrl
+      }
+    }
+    fetchCache()
+
+    return () => {
+      active = false
+    }
+  }, [coverResult, c.id, c.name, c.lastModifiedDateTime, coverUrl])
+
   // 组件卸载时清理封面 URL
   useEffect(() => {
     return () => {
       if (coverUrl) {
-        revokeCBZCoverUrl(coverUrl)
+        revokeCachedCoverUrl(coverUrl)
       }
     }
   }, [coverUrl])
-
-  // 决定显示的图片 URL
-  // 对于 CBZ，优先使用提取的封面；如果提取中或失败，尝试使用缩略图
-  let displayUrl = indexCoverUrl || coverUrl || thumbnailUrl
-  let displayBroken = indexCoverUrl || coverUrl ? false : brokenThumbnail
 
   return (
     <div className="flex flex-col">

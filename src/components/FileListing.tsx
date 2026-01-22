@@ -20,6 +20,7 @@ import {
   downloadTreelikeMultipleFiles,
   traverseFolder,
 } from './MultiFileDownloader'
+import { prefetchCovers } from '../utils/Linkcccp_coverUtils'
 
 import { layouts } from './SwitchLayout'
 import Loading, { LoadingIcon } from './Loading'
@@ -166,7 +167,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   }>({})
   const [flatFiles, setFlatFiles] = useState<OdFolderChildren[]>([])
   const [loadingFlat, setLoadingFlat] = useState(false)
-  
+
   // Sidebar 状态
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarFilters, setSidebarFilters] = useState<SidebarFilters>({
@@ -198,10 +199,14 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   }, [])
 
   // 获取 index.json 元数据用于筛选
-  const { data: bookIndexData } = useSWR('/api/Linkcccp_bookIndex', (url: string) => fetch(url).then(res => res.json()), {
-    revalidateOnFocus: false,
-    dedupingInterval: 60000,
-  })
+  const { data: bookIndexData } = useSWR(
+    '/api/Linkcccp_bookIndex',
+    (url: string) => fetch(url).then(res => res.json()),
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000,
+    }
+  )
 
   const router = useRouter()
   const hashedToken = getStoredToken(router.asPath)
@@ -232,10 +237,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     setVerifying(true)
     setPasswordError('')
     try {
-      const isValid = await verifyPassword(
-        passwordInput,
-        (siteConfig as any).Linkcccp_hiddenTagsPasswordHash || ''
-      )
+      const isValid = await verifyPassword(passwordInput, (siteConfig as any).Linkcccp_hiddenTagsPasswordHash || '')
       if (isValid) {
         setHiddenContentUnlocked(true)
         setHiddenUnlocked(true)
@@ -297,6 +299,22 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     }
   }, [path, data])
 
+  const responses: any[] = data ? [].concat(...data) : []
+  // 预取封面
+  useEffect(() => {
+    if (responses.length > 0 && 'folder' in responses[0]) {
+      const folderChildren = [].concat(...responses.map(r => r.folder.value)) as OdFolderChildren[]
+      // 构建书籍元数据映射
+      const bookMetadataMap = new Map<string, BookMetadata>()
+      if (bookIndexData?.books) {
+        for (const book of bookIndexData.books as BookMetadata[]) {
+          bookMetadataMap.set(book.name, book)
+        }
+      }
+      // 静默预取，不阻塞 UI
+      prefetchCovers(folderChildren, path, hashedToken, bookMetadataMap).catch(() => {})
+    }
+  }, [responses, path, hashedToken, bookIndexData])
   if (error) {
     // If error includes 403 which means the user has not completed initial setup, redirect to OAuth page
     if (error.status === 403) {
@@ -317,8 +335,6 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
       </PreviewContainer>
     )
   }
-
-  const responses: any[] = data ? [].concat(...data) : []
   console.log('FileListing debug:', { path, responses, data })
 
   const isLoadingInitialData = !data && !error
@@ -327,11 +343,17 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
   const isReachingEnd = isEmpty || (data && typeof data[data.length - 1]?.next === 'undefined')
   const onlyOnePage = data && typeof data[0].next === 'undefined'
 
-  console.log('responses[0] keys:', Object.keys(responses[0]), 'has folder?', 'folder' in responses[0], 'has file?', 'file' in responses[0])
+  console.log(
+    'responses[0] keys:',
+    Object.keys(responses[0]),
+    'has folder?',
+    'folder' in responses[0],
+    'has file?',
+    'file' in responses[0]
+  )
   if ('folder' in responses[0]) {
     // Expand list of API returns into flattened file data
     const folderChildren = [].concat(...responses.map(r => r.folder.value)) as OdFolderObject['value']
-
 
     // Find README.md file to render
     const readmeFile = folderChildren.find(c => c.name.toLowerCase() === 'readme.md')
@@ -339,8 +361,10 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     // Filtered file list helper - use flatFiles if available, otherwise fallback to current folder children
     const getFiles = () => {
       const source = loadingFlat ? folderChildren : flatFiles.length > 0 ? flatFiles : folderChildren
-      let files = source.filter(c => !c.folder && c.name !== '.password' && ['cbz', 'epub', 'pdf'].includes(getExtension(c.name).toLowerCase()))
-      
+      let files = source.filter(
+        c => !c.folder && c.name !== '.password' && ['cbz', 'epub', 'pdf'].includes(getExtension(c.name).toLowerCase())
+      )
+
       // 如果有筛选条件且有 index.json 数据，应用筛选
       const hasFilters = Object.values(sidebarFilters).some(arr => arr.length > 0)
       if (hasFilters && bookIndexData?.books) {
@@ -349,12 +373,12 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
         for (const book of bookIndexData.books as BookMetadata[]) {
           bookMetadataMap.set(book.name, book)
         }
-        
+
         // 根据筛选条件过滤
         const filteredBookNames = new Set(
           filterBooks(bookIndexData.books as BookMetadata[], sidebarFilters).map(b => b.name)
         )
-        
+
         files = files.filter(f => filteredBookNames.has(f.name))
       }
 
@@ -370,7 +394,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
           return !hasHiddenTag(meta?.tags, hiddenTags)
         })
       }
-      
+
       return files
     }
 
@@ -488,10 +512,9 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
         })
     }
 
-
     // Folder layout component props
     const displayChildren = getFiles()
-    
+
     // 构建书籍元数据映射表
     const bookMetadataMap = new Map<string, BookMetadata>()
     if (bookIndexData?.books) {
@@ -499,7 +522,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
         bookMetadataMap.set(book.name, book)
       }
     }
-    
+
     const folderProps = {
       toast,
       path,
@@ -524,29 +547,25 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
     const hasHiddenTagsConfig = hiddenTags.length > 0
 
     // 密码弹窗组件
-    const PasswordModal = () => (
+    const PasswordModal = () =>
       showPasswordModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
           <div className="mx-4 w-full max-w-sm rounded-fluent-xl bg-white p-6 shadow-fluent-lg dark:bg-gray-800">
             <h3 className="mb-4 flex items-center text-lg font-semibold text-gray-800 dark:text-gray-100">
-              <FontAwesomeIcon icon="lock" className="mr-2 h-5 w-5 text-amber-500" />
+              <FontAwesomeIcon icon="lock" className="text-amber-500 mr-2 h-5 w-5" />
               解锁隐藏内容
             </h3>
-            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-              请输入密码以查看包含隐私标签的内容
-            </p>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">请输入密码以查看包含隐私标签的内容</p>
             <input
               type="password"
               value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              onChange={e => setPasswordInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()}
               placeholder="请输入密码"
               className="mb-2 w-full rounded-fluent-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               autoFocus
             />
-            {passwordError && (
-              <p className="mb-3 text-sm text-red-500">{passwordError}</p>
-            )}
+            {passwordError && <p className="mb-3 text-sm text-red-500">{passwordError}</p>}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
@@ -576,32 +595,29 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
           </div>
         </div>
       )
-    )
 
     // 解锁按钮组件
-    const UnlockButton = () => (
-      hasHiddenTagsConfig && (
-        hiddenContentUnlocked ? (
-          <button
-            onClick={handleLockContent}
-            className="flex items-center gap-2 rounded-fluent-lg bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700 shadow-fluent-sm transition-all hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
-            title="点击重新锁定隐藏内容"
-          >
-            <FontAwesomeIcon icon="lock-open" className="h-4 w-4" />
-            <span>已解锁</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="flex items-center gap-2 rounded-fluent-lg bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-700 shadow-fluent-sm transition-all hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
-            title="输入密码解锁隐藏内容"
-          >
-            <FontAwesomeIcon icon="lock" className="h-4 w-4" />
-            <span>解锁</span>
-          </button>
-        )
-      )
-    )
+    const UnlockButton = () =>
+      hasHiddenTagsConfig &&
+      (hiddenContentUnlocked ? (
+        <button
+          onClick={handleLockContent}
+          className="flex items-center gap-2 rounded-fluent-lg bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700 shadow-fluent-sm transition-all hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+          title="点击重新锁定隐藏内容"
+        >
+          <FontAwesomeIcon icon="lock-open" className="h-4 w-4" />
+          <span>已解锁</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => setShowPasswordModal(true)}
+          className="bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50 flex items-center gap-2 rounded-fluent-lg px-4 py-2.5 text-sm font-medium shadow-fluent-sm transition-all"
+          title="输入密码解锁隐藏内容"
+        >
+          <FontAwesomeIcon icon="lock" className="h-4 w-4" />
+          <span>解锁</span>
+        </button>
+      ))
 
     // If root path, show flattened file list instead of book grid
     if (isRoot) {
@@ -611,33 +627,27 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
           <PasswordModal />
           <div className="flex">
             {/* Sidebar */}
-            <Linkcccp_Sidebar
-              isOpen={sidebarOpen}
-              onToggle={toggleSidebar}
-              onFilterChange={handleFilterChange}
-            />
-            
+            <Linkcccp_Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} onFilterChange={handleFilterChange} />
+
             {/* 主内容区 */}
-            <div className="flex-1 min-w-0 transition-all duration-300">
+            <div className="min-w-0 flex-1 transition-all duration-300">
               {/* 汉堡按钮 - 移动端和桌面端都显示 */}
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
                   className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                   onClick={toggleSidebar}
-                  title={sidebarOpen ? "折叠筛选" : "展开筛选"}
+                  title={sidebarOpen ? '折叠筛选' : '展开筛选'}
                 >
                   <FontAwesomeIcon icon="bars" className="h-5 w-5" />
                   <span>图书筛选</span>
                   {filterCount > 0 && (
-                    <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
-                      {filterCount}
-                    </span>
+                    <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">{filterCount}</span>
                   )}
                 </button>
 
                 {/* 解锁按钮 */}
                 <UnlockButton />
-                
+
                 {/* 显示结果数量 */}
                 <span className="text-sm text-gray-500 dark:text-gray-400">
                   共 {displayChildren.length} 本书
@@ -647,7 +657,11 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
                 </span>
               </div>
 
-              {layout.name === 'Grid' ? <Linkcccp_BookGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
+              {layout.name === 'Grid' ? (
+                <Linkcccp_BookGridLayout {...folderProps} />
+              ) : (
+                <FolderListLayout {...folderProps} />
+              )}
               {readmeFile && (
                 <div className="mt-4">
                   <MarkdownPreview file={readmeFile} path={path} standalone={false} />
@@ -656,7 +670,7 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
             </div>
           </div>
         </>
-      );
+      )
     }
 
     return (
@@ -665,33 +679,27 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
         <PasswordModal />
         <div className="flex">
           {/* Sidebar */}
-          <Linkcccp_Sidebar
-            isOpen={sidebarOpen}
-            onToggle={toggleSidebar}
-            onFilterChange={handleFilterChange}
-          />
-          
+          <Linkcccp_Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} onFilterChange={handleFilterChange} />
+
           {/* 主内容区 */}
-          <div className="flex-1 min-w-0 transition-all duration-300">
+          <div className="min-w-0 flex-1 transition-all duration-300">
             {/* 汉堡按钮 */}
             <div className="mb-4 flex flex-wrap items-center gap-3">
-            <button
-              className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-              onClick={toggleSidebar}
-              title={sidebarOpen ? "折叠筛选" : "展开筛选"}
-            >
-              <FontAwesomeIcon icon="bars" className="h-5 w-5" />
-              <span>图书筛选</span>
-              {filterCount > 0 && (
-                <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
-                  {filterCount}
-                </span>
-              )}
-            </button>
+              <button
+                className="flex items-center gap-2 rounded-fluent-lg bg-fluent-surface-card px-4 py-2.5 text-sm font-medium text-gray-700 shadow-fluent-sm transition-all hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                onClick={toggleSidebar}
+                title={sidebarOpen ? '折叠筛选' : '展开筛选'}
+              >
+                <FontAwesomeIcon icon="bars" className="h-5 w-5" />
+                <span>图书筛选</span>
+                {filterCount > 0 && (
+                  <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">{filterCount}</span>
+                )}
+              </button>
 
-            {/* 解锁按钮 */}
-            <UnlockButton />
-              
+              {/* 解锁按钮 */}
+              <UnlockButton />
+
               {/* 显示结果数量 */}
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 共 {displayChildren.length} 本书
@@ -701,7 +709,11 @@ const FileListing: FC<{ query?: ParsedUrlQuery }> = ({ query }) => {
               </span>
             </div>
 
-            {layout.name === 'Grid' ? <Linkcccp_BookGridLayout {...folderProps} /> : <FolderListLayout {...folderProps} />}
+            {layout.name === 'Grid' ? (
+              <Linkcccp_BookGridLayout {...folderProps} />
+            ) : (
+              <FolderListLayout {...folderProps} />
+            )}
 
             {readmeFile && (
               <div className="mt-4">
