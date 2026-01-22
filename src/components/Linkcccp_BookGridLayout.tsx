@@ -26,7 +26,13 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
   const hashedToken = getStoredToken(path)
   // 使用 thumbnail API 获取封面，默认使用 large 尺寸以保证清晰度
   const cleanPath = path.replace(/\/$/, '')
-  const thumbnailUrl = `/api/thumbnail?path=${encodeURIComponent(cleanPath + '/' + c.name)}&size=large${hashedToken ? `&odpt=${hashedToken}` : ''}`
+  const thumbnailUrl = `/api/thumbnail?path=${encodeURIComponent(cleanPath + '/' + c.name)}&size=large${
+    hashedToken ? `&odpt=${hashedToken}` : ''
+  }`
+  // 如果 index.json 中有封面路径，则使用 raw API 获取封面
+  const indexCoverUrl = bookMeta?.cover
+    ? `/api/raw?path=${encodeURIComponent(bookMeta.cover)}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+    : null
   const [brokenThumbnail, setBrokenThumbnail] = useState(false)
   const [coverUrl, setCoverUrl] = useState<string | null>(null)
   const [extractingCover, setExtractingCover] = useState(false)
@@ -46,7 +52,9 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
       setExtractingCover(true)
       try {
         const fileKey = c.id || `${cleanPath}/${c.name}`
-        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${
+          hashedToken ? `&odpt=${hashedToken}` : ''
+        }`
         const url = await extractCBZCover(
           fileKey,
           c.lastModifiedDateTime,
@@ -78,8 +86,8 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
 
   // 决定显示的图片 URL
   // 对于 CBZ，优先使用提取的封面；如果提取中或失败，尝试使用缩略图
-  let displayUrl = coverUrl || thumbnailUrl
-  let displayBroken = coverUrl ? false : brokenThumbnail
+  let displayUrl = indexCoverUrl || coverUrl || thumbnailUrl
+  let displayBroken = indexCoverUrl || coverUrl ? false : brokenThumbnail
 
   return (
     <div className="flex flex-col">
@@ -110,7 +118,7 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
             )}
           </div>
         )}
-        
+
         {/* 格式标签 */}
         <div className="absolute bottom-2 right-2 rounded-fluent-sm bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
           {fileExt}
@@ -118,7 +126,10 @@ const BookGridItem = ({ c, path, bookMeta }: BookGridItemProps) => {
       </div>
 
       {/* 书名 */}
-      <h3 className="mt-2 line-clamp-2 text-sm font-medium leading-tight text-gray-800 dark:text-gray-100" title={bookTitle}>
+      <h3
+        className="mt-2 line-clamp-2 text-sm font-medium leading-tight text-gray-800 dark:text-gray-100"
+        title={bookTitle}
+      >
         {bookTitle}
       </h3>
 
@@ -177,12 +188,7 @@ const Linkcccp_BookGridLayout = ({
           {`${folderChildren.length} 本书`}
         </div>
         <div className="flex items-center gap-1 text-fluent-text-secondary dark:text-fluent-text-secondary">
-          <Checkbox
-            checked={totalSelected}
-            onChange={toggleTotalSelected}
-            indeterminate={true}
-            title={'全选'}
-          />
+          <Checkbox checked={totalSelected} onChange={toggleTotalSelected} indeterminate={true} title={'全选'} />
           <button
             title={'复制选中文件链接'}
             className="cursor-pointer rounded-fluent-md p-1.5 hover:bg-fluent-surface-panel disabled:cursor-not-allowed disabled:text-fluent-text-disabled disabled:hover:bg-fluent-surface dark:hover:bg-fluent-surface-panel"
@@ -213,7 +219,7 @@ const Linkcccp_BookGridLayout = ({
       <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {folderChildren.map((c: OdFolderChildren) => {
           const bookMeta = bookMetadataMap?.get(c.name)
-          
+
           return (
             <div
               key={c.id}
@@ -221,15 +227,11 @@ const Linkcccp_BookGridLayout = ({
             >
               {/* 悬停操作按钮 */}
               <div className="absolute right-1 top-1 z-10 flex gap-1 rounded-fluent-md bg-fluent-surface-card/80 p-1 opacity-0 shadow-sm backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 dark:bg-fluent-surface-card/80">
-                <Checkbox
-                  checked={selected[c.id] ? 2 : 0}
-                  onChange={() => toggleItemSelected(c.id)}
-                  title={'选择'}
-                />
+                <Checkbox checked={selected[c.id] ? 2 : 0} onChange={() => toggleItemSelected(c.id)} title={'选择'} />
                 <span
                   title={'复制链接'}
                   className="cursor-pointer rounded-fluent-md p-1.5 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.preventDefault()
                     e.stopPropagation()
                     clipboard.copy(
@@ -244,23 +246,20 @@ const Linkcccp_BookGridLayout = ({
                   title={'下载'}
                   className="cursor-pointer rounded-fluent-md p-1.5 hover:bg-fluent-surface-panel dark:hover:bg-fluent-surface-panel"
                   href={`/api/raw?path=${getItemPath(c.name)}${hashedToken ? `&odpt=${hashedToken}` : ''}`}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
                 >
                   <FontAwesomeIcon icon={['far', 'arrow-alt-circle-down']} className="h-3.5 w-3.5" />
                 </a>
               </div>
 
               {/* 点击跳转到阅读页 */}
-              <Link
-                href={`${path === '/' ? '' : path}/${encodeURIComponent(c.name)}`}
-                className="block"
-              >
+              <Link href={`${path === '/' ? '' : path}/${encodeURIComponent(c.name)}`} className="block">
                 <BookGridItem c={c} path={path} bookMeta={bookMeta} />
               </Link>
 
               {/* 选中状态指示 */}
               {selected[c.id] && (
-                <div className="absolute inset-0 rounded-fluent-lg border-2 border-blue-500 pointer-events-none" />
+                <div className="pointer-events-none absolute inset-0 rounded-fluent-lg border-2 border-blue-500" />
               )}
             </div>
           )

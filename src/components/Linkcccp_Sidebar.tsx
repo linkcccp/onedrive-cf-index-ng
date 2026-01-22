@@ -43,6 +43,7 @@ export interface BookMetadata {
   publisher: string
   language: string
   type: string
+  cover?: string
 }
 
 interface Linkcccp_SidebarProps {

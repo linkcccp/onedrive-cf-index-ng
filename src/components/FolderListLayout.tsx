@@ -1,4 +1,5 @@
 import type { OdFolderChildren } from '../types'
+import type { BookMetadata } from './Linkcccp_Sidebar'
 
 import Link from 'next/link'
 import { FC, useState, useEffect } from 'react'
@@ -12,7 +13,12 @@ import { humanFileSize, formatModifiedDateTime } from '../utils/fileDetails'
 import { Downloading, Checkbox, ChildIcon, ChildName } from './FileListing'
 import { getStoredToken } from '../utils/protectedRouteHandler'
 
-const FileListItem: FC<{ fileContent: OdFolderChildren; path: string; hashedToken?: string | null }> = ({ fileContent: c, path, hashedToken }) => {
+const FileListItem: FC<{
+  fileContent: OdFolderChildren
+  path: string
+  hashedToken?: string | null
+  bookMeta?: BookMetadata
+}> = ({ fileContent: c, path, hashedToken, bookMeta }) => {
   const isCBZ = /\.cbz$/i.test(c.name)
   const cleanPath = path.replace(/\/$/, '')
   const [coverUrl, setCoverUrl] = useState<string | null>(null)
@@ -27,7 +33,9 @@ const FileListItem: FC<{ fileContent: OdFolderChildren; path: string; hashedToke
       setExtracting(true)
       try {
         const fileKey = c.id || `${cleanPath}/${c.name}`
-        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${hashedToken ? `&odpt=${hashedToken}` : ''}`
+        const downloadUrl = `/api/raw?path=${encodeURIComponent(cleanPath + '/' + c.name)}${
+          hashedToken ? `&odpt=${hashedToken}` : ''
+        }`
         const url = await extractCBZCover(fileKey, c.lastModifiedDateTime, downloadUrl)
         if (!active) return
         if (url) setCoverUrl(url)
@@ -93,6 +101,7 @@ const FolderListLayout = ({
   handleSelectedPermalink,
   handleFolderDownload,
   toast,
+  bookMetadataMap,
 }) => {
   const clipboard = useClipboard()
   const hashedToken = getStoredToken(path)

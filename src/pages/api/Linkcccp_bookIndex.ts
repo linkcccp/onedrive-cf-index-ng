@@ -33,6 +33,7 @@ export interface BookMetadata {
   pages?: number
   series_index?: string
   cover_id?: string
+  cover?: string
   error?: string
 }
 
